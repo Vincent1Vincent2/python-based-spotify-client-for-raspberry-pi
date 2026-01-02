@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Client</title>
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            position: relative;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .logout-btn {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .player-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        .track-info {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .track-image {
+            width: 200px;
+            height: 200px;
+            border-radius: 15px;
+            margin: 0 auto 20px;
+            object-fit: cover;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+        
+        .track-name {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .track-artist {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+        
+        .track-album {
+            font-size: 1rem;
+            opacity: 0.7;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-2px);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-play {
+            background: #1db954;
+            border-color: #1db954;
+        }
+        
+        .btn-play:hover:not(:disabled) {
+            background: #1ed760;
+            border-color: #1ed760;
+        }
+        
+        .search-section {
+            margin-top: 30px;
+        }
+        
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 12px 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 1rem;
+            outline: none;
+        }
+        
+        .search-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .search-input:focus {
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .search-results {
+            display: grid;
+            gap: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .search-result-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .search-result-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .result-image {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            object-fit: cover;
+        }
+        
+        .result-info {
+            flex: 1;
+        }
+        
+        .result-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .result-artist {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
+        .status-indicator {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
+        .player-status {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .playlists-section {
+            margin-top: 30px;
+        }
+        
+        .playlists-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .playlists-header h3 {
+            font-size: 1.3rem;
+        }
+        
+        .sort-controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .sort-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .sort-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .sort-btn.active {
+            background: #1db954;
+            border-color: #1db954;
+        }
+        
+        .playlists-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 15px;
+            max-height: 500px;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        
+        .playlist-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        
+        .playlist-item:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+        
+        .playlist-image {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            object-fit: cover;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .playlist-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-size: 0.95rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .playlist-info {
+            font-size: 0.8rem;
+            opacity: 0.7;
+        }
+        
+        .playlist-detail-view {
+            display: none;
+            margin-top: 30px;
+        }
+        
+        .playlist-detail-header {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            align-items: center;
+        }
+        
+        .playlist-detail-image {
+            width: 200px;
+            height: 200px;
+            border-radius: 12px;
+            object-fit: cover;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .playlist-detail-info h2 {
+            margin: 0 0 10px 0;
+            font-size: 2rem;
+        }
+        
+        .playlist-detail-info p {
+            margin: 5px 0;
+            opacity: 0.8;
+        }
+        
+        .playlist-detail-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .tracks-list {
+            max-height: 500px;
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 15px;
+        }
+        
+        .track-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        
+        .track-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .track-image {
+            width: 50px;
+            height: 50px;
+            border-radius: 6px;
+            object-fit: cover;
+        }
+        
+        .track-info {
+            flex: 1;
+        }
+        
+        .track-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .track-artist {
+            font-size: 0.85rem;
+            opacity: 0.7;
+        }
+        
+        .track-duration {
+            font-size: 0.85rem;
+            opacity: 0.6;
+            min-width: 50px;
+            text-align: right;
+        }
+        
+        .back-button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            transition: all 0.2s ease;
+        }
+        
+        .back-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .device-selector {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+        }
+        
+        .device-selector h3 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .device-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .device-item {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .device-item:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+        
+        .device-item.active {
+            background: rgba(29, 185, 84, 0.3);
+            border-color: #1db954;
+        }
+        
+        .device-info {
+            flex: 1;
+        }
+        
+        .device-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .device-type {
+            font-size: 0.85rem;
+            opacity: 0.8;
+        }
+        
+        .device-select-btn {
+            background: #1db954;
+            border: none;
+            color: #fff;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .device-select-btn:hover {
+            background: #1ed760;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 Spotify Client</h1>
+            <a href="{% url 'logout' %}" class="logout-btn">Logout</a>
+        </div>
+        
+        <div class="player-card">
+            <div class="player-status" id="playerStatus">Initializing player...</div>
+            
+            <div class="track-info" id="trackInfo">
+                <div class="track-name">No track playing</div>
+            </div>
+            
+            <div class="controls">
+                <button class="btn btn-previous" id="prevBtn" onclick="previousTrack()" disabled>⏮ Previous</button>
+                <button class="btn btn-play" id="playBtn" onclick="togglePlayback()" disabled>▶ Play</button>
+                <button class="btn btn-next" id="nextBtn" onclick="nextTrack()" disabled>⏭ Next</button>
+            </div>
+            
+            <div class="device-selector">
+                <h3>🎯 Select Playback Device</h3>
+                <div class="device-list" id="deviceList">
+                    <div class="device-item {% if use_web_player %}active{% endif %}" id="web-player-item">
+                        <div class="device-info">
+                            <div class="device-name">This Browser (Web Player)</div>
+                            <div class="device-type">Web Playback SDK • Independent player</div>
+                        </div>
+                        <button class="device-select-btn" onclick="selectWebPlayer()" id="web-player-btn">
+                            {% if use_web_player %}Selected{% else %}Select{% endif %}
+                        </button>
+                    </div>
+                    {% for device in devices %}
+                    <div class="device-item {% if not use_web_player and device.id == selected_device_id %}active{% endif %}" data-device-id="{{ device.id }}">
+                        <div class="device-info">
+                            <div class="device-name">{{ device.name }}</div>
+                            <div class="device-type">{{ device.type }} • Volume: {{ device.volume_percent }}%</div>
+                        </div>
+                        <button class="device-select-btn" onclick="selectDevice('{{ device.id }}')">
+                            {% if not use_web_player and device.id == selected_device_id %}Selected{% else %}Select{% endif %}
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="search-section">
+                <div class="search-box">
+                    <input type="text" class="search-input" id="searchInput" placeholder="Search for a song..." onkeypress="handleSearchKeyPress(event)">
+                    <button class="btn" onclick="searchTracks()">🔍 Search</button>
+                </div>
+                <div class="search-results" id="searchResults"></div>
+            </div>
+            
+            <div class="playlists-section" id="playlistsSection">
+                <div class="playlists-header">
+                    <h3>📋 Your Playlists</h3>
+                    <div class="sort-controls">
+                        <button class="sort-btn active" onclick="sortPlaylists('default')" id="sort-default">Default</button>
+                        <button class="sort-btn" onclick="sortPlaylists('name')" id="sort-name">Name</button>
+                        <button class="sort-btn" onclick="sortPlaylists('tracks')" id="sort-tracks">Tracks</button>
+                    </div>
+                </div>
+                <div class="playlists-grid" id="playlistsGrid">
+                    <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading playlists...</div>
+                </div>
+            </div>
+            
+            <div class="playlist-detail-view" id="playlistDetailView">
+                <button class="back-button" onclick="backToPlaylists()">← Back to Playlists</button>
+                <div class="playlist-detail-header" id="playlistDetailHeader"></div>
+                <div class="playlist-detail-actions" id="playlistDetailActions"></div>
+                <div class="tracks-list" id="tracksList"></div>
+            </div>
+            
+            <div class="status-indicator" id="statusIndicator"></div>
+        </div>
+    </div>
+    
+    <script>
+        const clientId = '{{ client_id }}';
+        let accessToken = '{{ access_token|default:"" }}';
+        let player;
+        let deviceId;
+        let currentTrack = null;
+        let isPlaying = false;
+        let useWebPlayer = {% if use_web_player %}true{% else %}false{% endif %};
+        
+        window.onSpotifyWebPlaybackSDKReady = () => {
+            // Always initialize the web player to get device ID, even if not currently selected
+            if (!accessToken) {
+                fetch('/token/')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.access_token) {
+                            accessToken = data.access_token;
+                            initializePlayer();
+                        } else {
+                            document.getElementById('playerStatus').textContent = 'Error: Could not get access token';
+                        }
+                    });
+            } else {
+                initializePlayer();
+            }
+            
+            // Update UI based on whether web player is selected
+            if (!useWebPlayer) {
+                document.getElementById('playerStatus').textContent = 'Using external device';
+                document.getElementById('prevBtn').disabled = false;
+                document.getElementById('playBtn').disabled = false;
+                document.getElementById('nextBtn').disabled = false;
+            }
+        };
+        
+        function initializePlayer() {
+            player = new Spotify.Player({
+                name: 'Spotify Client',
+                getOAuthToken: cb => { cb(accessToken); },
+                volume: 0.5
+            });
+            
+            player.addListener('ready', ({ device_id }) => {
+                deviceId = device_id;
+                document.getElementById('playerStatus').textContent = 'Player ready!';
+                document.getElementById('prevBtn').disabled = false;
+                document.getElementById('playBtn').disabled = false;
+                document.getElementById('nextBtn').disabled = false;
+            });
+            
+            player.addListener('not_ready', ({ device_id }) => {
+                document.getElementById('playerStatus').textContent = 'Player has gone offline';
+            });
+            
+            player.addListener('player_state_changed', state => {
+                if (!state) {
+                    return;
+                }
+                
+                currentTrack = state.track_window.current_track;
+                isPlaying = !state.paused;
+                
+                updateTrackDisplay();
+                updatePlayButton();
+            });
+            
+            player.connect();
+        }
+        
+        function updateTrackDisplay() {
+            if (currentTrack) {
+                const trackInfo = document.getElementById('trackInfo');
+                trackInfo.innerHTML = `
+                    <img src="${currentTrack.album.images[0]?.url || ''}" alt="Album cover" class="track-image">
+                    <div class="track-name">${currentTrack.name}</div>
+                    <div class="track-artist">${currentTrack.artists.map(a => a.name).join(', ')}</div>
+                    <div class="track-album">${currentTrack.album.name}</div>
+                `;
+            }
+        }
+        
+        function updatePlayButton() {
+            const playBtn = document.getElementById('playBtn');
+            if (isPlaying) {
+                playBtn.textContent = '⏸ Pause';
+            } else {
+                playBtn.textContent = '▶ Play';
+            }
+        }
+        
+        function togglePlayback() {
+            if (useWebPlayer && player) {
+                player.togglePlay();
+            } else {
+                // Use REST API for external devices
+                const endpoint = isPlaying ? '/pause/' : '/play/';
+                fetch(endpoint, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status) {
+                            isPlaying = !isPlaying;
+                            updatePlayButton();
+                        }
+                    });
+            }
+        }
+        
+        function nextTrack() {
+            if (useWebPlayer && player) {
+                player.nextTrack();
+            } else {
+                fetch('/next/', { method: 'POST' })
+                    .then(response => response.json());
+            }
+        }
+        
+        function previousTrack() {
+            if (useWebPlayer && player) {
+                player.previousTrack();
+            } else {
+                fetch('/previous/', { method: 'POST' })
+                    .then(response => response.json());
+            }
+        }
+        
+        function handleSearchKeyPress(event) {
+            if (event.key === 'Enter') {
+                searchTracks();
+            }
+        }
+        
+        function searchTracks() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) return;
+            
+            fetch(`/search/?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('searchResults').innerHTML = '<div>Error: ' + data.error + '</div>';
+                        return;
+                    }
+                    
+                    const results = document.getElementById('searchResults');
+                    if (data.tracks.length === 0) {
+                        results.innerHTML = '<div>No results found</div>';
+                        return;
+                    }
+                    
+                    results.innerHTML = data.tracks.map(track => `
+                        <div class="search-result-item" onclick="playTrack('${track.id}')">
+                            <img src="${track.image || ''}" alt="Album cover" class="result-image">
+                            <div class="result-info">
+                                <div class="result-name">${track.name}</div>
+                                <div class="result-artist">${track.artists.join(', ')}</div>
+                            </div>
+                        </div>
+                    `).join('');
+                });
+        }
+        
+        function playTrack(trackId) {
+            if (useWebPlayer && player && deviceId) {
+                if (!accessToken) {
+                    document.getElementById('statusIndicator').textContent = 'Player not ready';
+                    return;
+                }
+                
+                fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        uris: [`spotify:track:${trackId}`]
+                    })
+                })
+                .then(response => {
+                    if (response.ok) {
+                        document.getElementById('statusIndicator').textContent = 'Playing track...';
+                        setTimeout(() => {
+                            document.getElementById('statusIndicator').textContent = '';
+                        }, 2000);
+                    } else {
+                        document.getElementById('statusIndicator').textContent = 'Error playing track';
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('statusIndicator').textContent = 'Error: ' + error;
+                });
+            } else {
+                // For external devices, add to queue
+                fetch(`/queue/?id=${trackId}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'queued') {
+                            document.getElementById('statusIndicator').textContent = 'Track added to queue!';
+                            setTimeout(() => {
+                                document.getElementById('statusIndicator').textContent = '';
+                            }, 2000);
+                        }
+                    });
+            }
+        }
+        
+        function selectWebPlayer() {
+            // Make sure we have the web player device ID before transferring
+            if (!deviceId && player) {
+                document.getElementById('statusIndicator').textContent = 'Web player not ready yet, please wait...';
+                return;
+            }
+            
+            if (!deviceId) {
+                document.getElementById('statusIndicator').textContent = 'Web player device not available';
+                return;
+            }
+            
+            document.getElementById('statusIndicator').textContent = 'Transferring to web player...';
+            
+            fetch(`/select-web-player/?device_id=${deviceId}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'selected') {
+                        document.getElementById('statusIndicator').textContent = 'Switched to web player!';
+                        // Update the device selector UI immediately
+                        document.getElementById('web-player-item').classList.add('active');
+                        document.getElementById('web-player-btn').textContent = 'Selected';
+                        // Remove active from other devices
+                        document.querySelectorAll('.device-item').forEach(item => {
+                            if (item.id !== 'web-player-item') {
+                                item.classList.remove('active');
+                                const btn = item.querySelector('.device-select-btn');
+                                if (btn) btn.textContent = 'Select';
+                            }
+                        });
+                        // Don't reload - just update UI and let the player handle it
+                        useWebPlayer = true;
+                        document.getElementById('statusIndicator').textContent = 'Now playing on web player';
+                    } else if (data.error) {
+                        document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('statusIndicator').textContent = 'Error: ' + error;
+                });
+        }
+        
+        function selectDevice(deviceId) {
+            fetch(`/transfer/?device_id=${deviceId}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'transferred') {
+                        document.getElementById('statusIndicator').textContent = 'Device switched!';
+                        setTimeout(() => {
+                            location.reload();
+                        }, 500);
+                    } else if (data.error) {
+                        document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('statusIndicator').textContent = 'Error: ' + error;
+                });
+        }
+        
+        let allPlaylists = [];
+        let originalPlaylistsOrder = []; // Store original order from API
+        let currentSort = 'default';
+        
+        function loadPlaylists() {
+            fetch('/playlists/')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('playlistsGrid').innerHTML = '<div style="text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
+                        return;
+                    }
+                    
+                    allPlaylists = data.playlists;
+                    originalPlaylistsOrder = [...data.playlists]; // Store original order
+                    displayPlaylists(allPlaylists);
+                })
+                .catch(error => {
+                    document.getElementById('playlistsGrid').innerHTML = '<div style="text-align: center; padding: 20px;">Error loading playlists</div>';
+                });
+        }
+        
+        function displayPlaylists(playlists) {
+            const grid = document.getElementById('playlistsGrid');
+            if (playlists.length === 0) {
+                grid.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No playlists found</div>';
+                return;
+            }
+            
+            grid.innerHTML = playlists.map(playlist => {
+                return `
+                    <div class="playlist-item" onclick="viewPlaylist('${playlist.id}')">
+                        <img src="${playlist.image || 'https://via.placeholder.com/180?text=No+Image'}" alt="${playlist.name}" class="playlist-image">
+                        <div class="playlist-name">${playlist.name}</div>
+                        <div class="playlist-info">${playlist.tracks_count} tracks</div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function viewPlaylist(playlistId) {
+            // Hide playlists section, show detail view
+            const playlistsSection = document.getElementById('playlistsSection');
+            const playlistDetailView = document.getElementById('playlistDetailView');
+            
+            if (!playlistsSection || !playlistDetailView) {
+                console.error('Required elements not found');
+                return;
+            }
+            
+            playlistsSection.style.display = 'none';
+            playlistDetailView.style.display = 'block';
+            
+            // Load playlist details
+            fetch(`/playlist-detail/?id=${playlistId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
+                        return;
+                    }
+                    
+                    // Display playlist header
+                    const header = document.getElementById('playlistDetailHeader');
+                    header.innerHTML = `
+                        <img src="${data.image || 'https://via.placeholder.com/200?text=No+Image'}" alt="${data.name}" class="playlist-detail-image">
+                        <div class="playlist-detail-info">
+                            <h2>${data.name}</h2>
+                            <p>${data.description || 'No description'}</p>
+                            <p>By ${data.owner} • ${data.tracks_count} tracks</p>
+                        </div>
+                    `;
+                    
+                    // Display action buttons
+                    const actions = document.getElementById('playlistDetailActions');
+                    actions.innerHTML = `
+                        <button class="btn" onclick="playPlaylist('${data.id}')">▶ Play</button>
+                    `;
+                    
+                    // Display tracks
+                    const tracksList = document.getElementById('tracksList');
+                    if (data.tracks.length === 0) {
+                        tracksList.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No tracks in this playlist</div>';
+                    } else {
+                        tracksList.innerHTML = data.tracks.map((track, index) => {
+                            const duration = Math.floor(track.duration_ms / 1000);
+                            const minutes = Math.floor(duration / 60);
+                            const seconds = duration % 60;
+                            const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                            
+                            return `
+                                <div class="track-item" onclick="playTrack('${track.id}')">
+                                    <img src="${track.image || 'https://via.placeholder.com/50?text=No+Image'}" alt="${track.name}" class="track-image">
+                                    <div class="track-info">
+                                        <div class="track-name">${track.name}</div>
+                                        <div class="track-artist">${track.artists.join(', ')}</div>
+                                    </div>
+                                    <div class="track-duration">${durationStr}</div>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('statusIndicator').textContent = 'Error loading playlist';
+                });
+        }
+        
+        function backToPlaylists() {
+            const playlistsSection = document.getElementById('playlistsSection');
+            const playlistDetailView = document.getElementById('playlistDetailView');
+            
+            if (!playlistsSection || !playlistDetailView) {
+                console.error('Required elements not found');
+                return;
+            }
+            
+            playlistsSection.style.display = 'block';
+            playlistDetailView.style.display = 'none';
+        }
+        
+        function sortPlaylists(sortType) {
+            currentSort = sortType;
+            
+            // Update active button
+            document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`sort-${sortType}`).classList.add('active');
+            
+            let sorted = [...allPlaylists];
+            
+            if (sortType === 'default') {
+                // Default: keep original order from Spotify API (matches phone)
+                // Use the original order stored when playlists were loaded
+                sorted = [...originalPlaylistsOrder];
+            } else if (sortType === 'name') {
+                sorted.sort((a, b) => a.name.localeCompare(b.name));
+            } else if (sortType === 'tracks') {
+                sorted.sort((a, b) => b.tracks_count - a.tracks_count);
+            }
+            
+            displayPlaylists(sorted);
+        }
+        
+        function playPlaylist(playlistId) {
+            if (useWebPlayer && deviceId) {
+                fetch(`/play-playlist/?id=${playlistId}&device_id=${deviceId}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'playing') {
+                            document.getElementById('statusIndicator').textContent = 'Playing playlist...';
+                            setTimeout(() => {
+                                document.getElementById('statusIndicator').textContent = '';
+                            }, 2000);
+                        } else if (data.error) {
+                            document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
+                        }
+                    });
+            } else {
+                fetch(`/play-playlist/?id=${playlistId}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'playing') {
+                            document.getElementById('statusIndicator').textContent = 'Playing playlist...';
+                            setTimeout(() => {
+                                document.getElementById('statusIndicator').textContent = '';
+                            }, 2000);
+                        } else if (data.error) {
+                            document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
+                        }
+                    });
+            }
+        }
+        
+        // Load playlists when page loads
+        window.addEventListener('load', () => {
+            loadPlaylists();
+        });
+    </script>
+</body>
+</html>
