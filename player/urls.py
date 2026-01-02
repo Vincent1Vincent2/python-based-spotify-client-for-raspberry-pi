@@ -19,5 +19,10 @@ urlpatterns = [
     path('playlists/', views.playlists, name='playlists'),
     path('playlist-detail/', views.playlist_detail, name='playlist_detail'),
     path('play-playlist/', views.play_playlist, name='play_playlist'),
+    path('albums/', views.albums, name='albums'),
+    path('album-detail/', views.album_detail, name='album_detail'),
+    path('play-album/', views.play_album, name='play_album'),
+    path('saved-tracks/', views.saved_tracks, name='saved_tracks'),
+    path('discover/', views.discover, name='discover'),
 ]
 

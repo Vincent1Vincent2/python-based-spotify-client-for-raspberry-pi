@@ -6,9 +6,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.conf import settings
 import json
+import random
 
 
-SPOTIFY_SCOPE = 'user-modify-playback-state user-read-playback-state user-read-currently-playing user-read-playback-position streaming playlist-read-private playlist-read-collaborative'
+SPOTIFY_SCOPE = 'user-modify-playback-state user-read-playback-state user-read-currently-playing user-read-playback-position streaming playlist-read-private playlist-read-collaborative user-library-read'
 
 
 def get_spotify_client(request):
@@ -394,36 +395,287 @@ def queue_track(request):
 
 
 def playlists(request):
-    """Get user's playlists."""
+    """Get user's playlists with pagination."""
     sp = get_spotify_client(request)
     if not sp:
         return JsonResponse({'error': 'Not authenticated'}, status=401)
     
     try:
-        playlists_list = []
-        results = sp.current_user_playlists(limit=50)
+        offset = int(request.GET.get('offset', 0))
+        limit = int(request.GET.get('limit', 50))
         
-        while results:
-            for playlist in results['items']:
-                playlists_list.append({
-                    'id': playlist['id'],
-                    'name': playlist['name'],
-                    'description': playlist.get('description', ''),
-                    'image': playlist['images'][0]['url'] if playlist['images'] else None,
-                    'tracks_count': playlist['tracks']['total'],
-                    'owner': playlist['owner']['display_name'] or playlist['owner']['id'],
-                    'public': playlist.get('public', False),
-                    'collaborative': playlist.get('collaborative', False),
-                })
+        playlists_list = []
+        results = sp.current_user_playlists(limit=limit, offset=offset)
+        
+        for playlist in results['items']:
+            playlists_list.append({
+                'id': playlist['id'],
+                'name': playlist['name'],
+                'description': playlist.get('description', ''),
+                'image': playlist['images'][0]['url'] if playlist['images'] else None,
+                'tracks_count': playlist['tracks']['total'],
+                'owner': playlist['owner']['display_name'] or playlist['owner']['id'],
+                'public': playlist.get('public', False),
+                'collaborative': playlist.get('collaborative', False),
+            })
+        
+        # Check if there are more playlists
+        has_more = results['next'] is not None
+        
+        return JsonResponse({
+            'playlists': playlists_list,
+            'has_more': has_more,
+            'offset': offset,
+            'total': results.get('total', 0)
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+def albums(request):
+    """Get user's saved albums with pagination."""
+    sp = get_spotify_client(request)
+    if not sp:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    
+    try:
+        offset = int(request.GET.get('offset', 0))
+        limit = int(request.GET.get('limit', 50))
+        
+        albums_list = []
+        results = sp.current_user_saved_albums(limit=limit, offset=offset)
+        
+        for item in results['items']:
+            album = item['album']
+            albums_list.append({
+                'id': album['id'],
+                'name': album['name'],
+                'artists': [artist['name'] for artist in album['artists']],
+                'image': album['images'][0]['url'] if album['images'] else None,
+                'release_date': album.get('release_date', ''),
+                'total_tracks': album.get('total_tracks', 0),
+            })
+        
+        # Check if there are more albums
+        has_more = results['next'] is not None
+        
+        return JsonResponse({
+            'albums': albums_list,
+            'has_more': has_more,
+            'offset': offset,
+            'total': results.get('total', 0)
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+def saved_tracks(request):
+    """Get user's saved tracks (liked songs) with pagination."""
+    sp = get_spotify_client(request)
+    if not sp:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    
+    try:
+        offset = int(request.GET.get('offset', 0))
+        limit = int(request.GET.get('limit', 50))
+        
+        tracks_list = []
+        results = sp.current_user_saved_tracks(limit=limit, offset=offset)
+        
+        for item in results['items']:
+            track = item['track']
+            tracks_list.append({
+                'id': track['id'],
+                'name': track['name'],
+                'artists': [artist['name'] for artist in track['artists']],
+                'album': track['album']['name'],
+                'image': track['album']['images'][0]['url'] if track['album']['images'] else None,
+                'duration_ms': track.get('duration_ms', 0),
+                'uri': track['uri'],
+                'added_at': item.get('added_at', ''),
+            })
+        
+        # Check if there are more tracks
+        has_more = results['next'] is not None
+        
+        return JsonResponse({
+            'tracks': tracks_list,
+            'has_more': has_more,
+            'offset': offset,
+            'total': results.get('total', 0)
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+def discover(request):
+    """Get random discover content - playlists, albums, and tracks."""
+    sp = get_spotify_client(request)
+    if not sp:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    
+    try:
+        discover_data = {
+            'playlists': [],
+            'albums': [],
+            'tracks': []
+        }
+        
+        # Get random categories for playlists
+        try:
+            categories = sp.categories(limit=50)
+            if categories and categories.get('categories', {}).get('items'):
+                category_items = categories['categories']['items']
+                random_categories = random.sample(category_items, min(3, len(category_items)))
+                
+                for category in random_categories:
+                    try:
+                        playlists = sp.category_playlists(category_id=category['id'], limit=10)
+                        if playlists and playlists.get('playlists', {}).get('items'):
+                            for playlist in playlists['playlists']['items'][:3]:  # Take 3 from each category
+                                discover_data['playlists'].append({
+                                    'id': playlist['id'],
+                                    'name': playlist['name'],
+                                    'description': playlist.get('description', ''),
+                                    'image': playlist['images'][0]['url'] if playlist['images'] else None,
+                                    'tracks_count': playlist['tracks']['total'],
+                                    'owner': playlist['owner']['display_name'] or playlist['owner']['id'],
+                                    'type': 'playlist'
+                                })
+                    except:
+                        continue
+        except:
+            pass
+        
+        # Get featured playlists
+        try:
+            featured = sp.featured_playlists(limit=20)
+            if featured and featured.get('playlists', {}).get('items'):
+                for playlist in random.sample(featured['playlists']['items'], min(5, len(featured['playlists']['items']))):
+                    discover_data['playlists'].append({
+                        'id': playlist['id'],
+                        'name': playlist['name'],
+                        'description': playlist.get('description', ''),
+                        'image': playlist['images'][0]['url'] if playlist['images'] else None,
+                        'tracks_count': playlist['tracks']['total'],
+                        'owner': playlist['owner']['display_name'] or playlist['owner']['id'],
+                        'type': 'playlist'
+                    })
+        except:
+            pass
+        
+        # Get new releases (random albums)
+        try:
+            new_releases = sp.new_releases(limit=50)
+            if new_releases and new_releases.get('albums', {}).get('items'):
+                random_albums = random.sample(new_releases['albums']['items'], min(10, len(new_releases['albums']['items'])))
+                for album in random_albums:
+                    discover_data['albums'].append({
+                        'id': album['id'],
+                        'name': album['name'],
+                        'artists': [artist['name'] for artist in album['artists']],
+                        'image': album['images'][0]['url'] if album['images'] else None,
+                        'release_date': album.get('release_date', ''),
+                        'total_tracks': album.get('total_tracks', 0),
+                        'type': 'album'
+                    })
+        except:
+            pass
+        
+        # Get random recommendations using random genres
+        try:
+            available_genres = sp.recommendation_genre_seeds()
+            if available_genres and available_genres.get('genres'):
+                genres_list = available_genres['genres']
+                random_genres = random.sample(genres_list, min(5, len(genres_list)))
+                
+                # Get recommendations for each genre
+                for genre in random_genres:
+                    try:
+                        recommendations = sp.recommendations(seed_genres=[genre], limit=10)
+                        if recommendations and recommendations.get('tracks'):
+                            for track in recommendations['tracks'][:3]:  # Take 3 from each genre
+                                discover_data['tracks'].append({
+                                    'id': track['id'],
+                                    'name': track['name'],
+                                    'artists': [artist['name'] for artist in track['artists']],
+                                    'album': track['album']['name'],
+                                    'image': track['album']['images'][0]['url'] if track['album']['images'] else None,
+                                    'duration_ms': track.get('duration_ms', 0),
+                                    'uri': track['uri'],
+                                    'type': 'track',
+                                    'preview_url': track.get('preview_url')
+                                })
+                    except:
+                        continue
+        except:
+            pass
+        
+        # Shuffle everything for maximum randomness
+        random.shuffle(discover_data['playlists'])
+        random.shuffle(discover_data['albums'])
+        random.shuffle(discover_data['tracks'])
+        
+        # Limit each type to reasonable amounts
+        discover_data['playlists'] = discover_data['playlists'][:15]
+        discover_data['albums'] = discover_data['albums'][:15]
+        discover_data['tracks'] = discover_data['tracks'][:20]
+        
+        return JsonResponse(discover_data)
+    except Exception as e:
+        import traceback
+        return JsonResponse({'error': str(e), 'traceback': traceback.format_exc()}, status=400)
+
+
+def album_detail(request):
+    """Get detailed information about a specific album including tracks."""
+    album_id = request.GET.get('id', '')
+    if not album_id:
+        return JsonResponse({'error': 'Album ID required'}, status=400)
+    
+    sp = get_spotify_client(request)
+    if not sp:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    
+    try:
+        # Get album details
+        album = sp.album(album_id)
+        
+        # Get all tracks in the album
+        tracks_list = []
+        results = album['tracks']
+        
+        while True:
+            for track in results['items']:
+                if track:
+                    # Get full track details for images
+                    track_image = album['images'][0]['url'] if album['images'] else None
+                    tracks_list.append({
+                        'id': track['id'],
+                        'name': track['name'],
+                        'artists': [artist['name'] for artist in track['artists']],
+                        'album': album['name'],
+                        'image': track_image,
+                        'duration_ms': track.get('duration_ms', 0),
+                        'uri': track['uri'],
+                    })
             
             if results['next']:
                 results = sp.next(results)
             else:
                 break
         
-        # Keep playlists in the original order from Spotify API
-        # This matches the order shown in the Spotify app (pinned playlists come first)
-        return JsonResponse({'playlists': playlists_list})
+        album_data = {
+            'id': album['id'],
+            'name': album['name'],
+            'artists': [artist['name'] for artist in album['artists']],
+            'image': album['images'][0]['url'] if album['images'] else None,
+            'release_date': album.get('release_date', ''),
+            'total_tracks': album.get('total_tracks', 0),
+            'tracks': tracks_list,
+        }
+        
+        return JsonResponse(album_data)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
 
@@ -510,5 +762,38 @@ def play_playlist(request):
         # Start playback with the playlist
         sp.start_playback(device_id=device_id, context_uri=f'spotify:playlist:{playlist_id}')
         return JsonResponse({'status': 'playing', 'playlist_id': playlist_id})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def play_album(request):
+    """Play an album."""
+    album_id = request.GET.get('id', '')
+    if not album_id:
+        return JsonResponse({'error': 'Album ID required'}, status=400)
+    
+    sp = get_spotify_client(request)
+    if not sp:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    
+    try:
+        use_web_player = request.session.get('use_web_player', True)
+        device_id = None
+        
+        if use_web_player:
+            # For web player, we need the device_id from the frontend
+            device_id = request.GET.get('device_id', None)
+            if not device_id:
+                return JsonResponse({'error': 'Web player device ID required'}, status=400)
+        else:
+            device_id = request.session.get('selected_device_id')
+            if not device_id:
+                return JsonResponse({'error': 'No device selected'}, status=400)
+        
+        # Start playback with the album
+        sp.start_playback(device_id=device_id, context_uri=f'spotify:album:{album_id}')
+        return JsonResponse({'status': 'playing', 'album_id': album_id})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
