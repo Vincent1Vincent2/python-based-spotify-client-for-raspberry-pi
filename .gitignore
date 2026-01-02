@@ -32,7 +32,7 @@ db.sqlite3-journal
 
 # Environment variables
 .env
-
+.cache
 
 # IDE
 .vscode/
