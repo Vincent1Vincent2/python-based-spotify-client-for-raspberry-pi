@@ -52,15 +52,15 @@ Edit `.env` with your credentials (paste the generated secret key):
 ```
 SECRET_KEY=your-generated-secret-key-here
 DEBUG=True
-SPOTIPY_CLIENT_ID=your-client-id-here
-SPOTIPY_CLIENT_SECRET=your-client-secret-here
-SPOTIPY_REDIRECT_URI=http://127.0.0.1:8000/callback
+SPOTIFY_CLIENT_ID=your-client-id-here
+SPOTIFY_CLIENT_SECRET=your-client-secret-here
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:8000/callback
 ```
 
 For Raspberry Pi, update the redirect URI to your Pi's IP address:
 
 ```
-SPOTIPY_REDIRECT_URI=http://YOUR_PI_IP:8000/callback
+SPOTIFY_REDIRECT_URI=http://YOUR_PI_IP:8000/callback
 ```
 
 ### 4. Run Migrations

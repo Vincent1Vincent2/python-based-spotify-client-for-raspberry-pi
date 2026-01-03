@@ -1,5 +1,3 @@
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
 from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -7,30 +5,20 @@ from django.views.decorators.http import require_http_methods
 from django.conf import settings
 import json
 import random
+import requests
+from .spotify_api import SpotifyAPI, get_spotify_api
 
 
 SPOTIFY_SCOPE = 'user-modify-playback-state user-read-playback-state user-read-currently-playing user-read-playback-position streaming playlist-read-private playlist-read-collaborative user-library-read'
 
 
 def get_spotify_client(request):
-    """Get or create Spotify client from session."""
-    token_info = request.session.get('token_info', None)
-    
-    if not token_info:
-        return None
-    
-    auth_manager = SpotifyOAuth(
-        client_id=settings.SPOTIPY_CLIENT_ID,
-        client_secret=settings.SPOTIPY_CLIENT_SECRET,
-        redirect_uri=settings.SPOTIPY_REDIRECT_URI,
-        scope=SPOTIFY_SCOPE
-    )
-    
-    if auth_manager.is_token_expired(token_info):
-        token_info = auth_manager.refresh_access_token(token_info['refresh_token'])
-        request.session['token_info'] = token_info
-    
-    return spotipy.Spotify(auth=token_info['access_token'])
+    """
+    Get Spotify API client from session.
+    DEPRECATED: Use get_spotify_api() instead.
+    This is kept for backward compatibility during migration.
+    """
+    return get_spotify_api(request)
 
 
 def index(request):
@@ -45,7 +33,9 @@ def index(request):
         access_token = token_info.get('access_token') if token_info else None
         
         # Get available devices
-        devices_list = sp.devices()
+        response = sp.get_devices()
+        response.raise_for_status()
+        devices_list = response.json()
         selected_device_id = request.session.get('selected_device_id', None)
         use_web_player = request.session.get('use_web_player', True)
         manual_selection = request.session.get('manual_device_selection', False)
@@ -55,7 +45,12 @@ def index(request):
         if not manual_selection:
             # Check which device is actually playing
             try:
-                playback = sp.current_playback()
+                response = sp.get_current_playback()
+                if response.status_code == 204:
+                    playback = None
+                else:
+                    response.raise_for_status()
+                    playback = response.json()
                 if playback and playback.get('device'):
                     active_device_id = playback['device']['id']
                     # If a device is actively playing, sync session to match
@@ -77,7 +72,7 @@ def index(request):
         
         context = {
             'access_token': access_token,
-            'client_id': settings.SPOTIPY_CLIENT_ID,
+            'client_id': settings.SPOTIFY_CLIENT_ID,
             'devices': devices_list.get('devices', []),
             'selected_device_id': selected_device_id,
             'use_web_player': use_web_player,
@@ -86,7 +81,7 @@ def index(request):
         context = {
             'error': str(e), 
             'access_token': None, 
-            'client_id': settings.SPOTIPY_CLIENT_ID,
+            'client_id': settings.SPOTIFY_CLIENT_ID,
             'devices': [],
             'selected_device_id': None,
             'use_web_player': True,
@@ -104,14 +99,9 @@ def login_view(request):
     
     # If 'auth' parameter is present, initiate OAuth flow
     if request.GET.get('auth') == '1':
-        auth_manager = SpotifyOAuth(
-            client_id=settings.SPOTIPY_CLIENT_ID,
-            client_secret=settings.SPOTIPY_CLIENT_SECRET,
-            redirect_uri=settings.SPOTIPY_REDIRECT_URI,
-            scope=SPOTIFY_SCOPE
-        )
-        
-        auth_url = auth_manager.get_authorize_url()
+        # Use custom Spotify API client
+        api = SpotifyAPI()
+        auth_url = api.get_authorization_url(SPOTIFY_SCOPE)
         return redirect(auth_url)
     
     # Otherwise show login page
@@ -132,37 +122,33 @@ def callback(request):
     if error:
         return render(request, 'player/error.html', {'error': error})
     
-    auth_manager = SpotifyOAuth(
-        client_id=settings.SPOTIPY_CLIENT_ID,
-        client_secret=settings.SPOTIPY_CLIENT_SECRET,
-        redirect_uri=settings.SPOTIPY_REDIRECT_URI,
-        scope=SPOTIFY_SCOPE
-    )
+    if not code:
+        return render(request, 'player/error.html', {'error': 'No authorization code provided'})
     
-    token_info = auth_manager.get_access_token(code)
-    request.session['token_info'] = token_info
-    request.session['use_web_player'] = True  # Default to web player
-    
-    return redirect('index')
+    try:
+        # Use custom Spotify API client
+        api = SpotifyAPI()
+        token_info = api.get_access_token(code)
+        request.session['token_info'] = token_info
+        request.session['use_web_player'] = True  # Default to web player
+        
+        return redirect('index')
+    except Exception as e:
+        return render(request, 'player/error.html', {'error': f'Authentication failed: {str(e)}'})
 
 
 def token(request):
     """Get access token for Web Playback SDK."""
-    token_info = request.session.get('token_info', None)
-    if not token_info:
+    api = get_spotify_api(request)
+    if not api:
         return JsonResponse({'error': 'Not authenticated'}, status=401)
     
-    # Refresh token if needed
-    auth_manager = SpotifyOAuth(
-        client_id=settings.SPOTIPY_CLIENT_ID,
-        client_secret=settings.SPOTIPY_CLIENT_SECRET,
-        redirect_uri=settings.SPOTIPY_REDIRECT_URI,
-        scope=SPOTIFY_SCOPE
-    )
+    # Token is already refreshed in get_spotify_api()
+    token_info = request.session.get('token_info', None)
+    if not token_info:
+        return JsonResponse({'error': 'No token available'}, status=401)
     
-    if auth_manager.is_token_expired(token_info):
-        token_info = auth_manager.refresh_access_token(token_info['refresh_token'])
-        request.session['token_info'] = token_info
+    return JsonResponse({'access_token': token_info['access_token']})
     
     return JsonResponse({'access_token': token_info.get('access_token')})
 
@@ -178,7 +164,9 @@ def search(request):
         return JsonResponse({'error': 'Not authenticated'}, status=401)
     
     try:
-        results = sp.search(q=query, type='track', limit=10)
+        response = sp.search(q=query, type='track', limit=10)
+        response.raise_for_status()
+        results = response.json()
         tracks = [{
             'id': item['id'],
             'name': item['name'],
@@ -198,7 +186,9 @@ def devices(request):
         return JsonResponse({'error': 'Not authenticated'}, status=401)
     
     try:
-        devices_list = sp.devices()
+        response = sp.get_devices()
+        response.raise_for_status()
+        devices_list = response.json()
         device_list = [{
             'id': device['id'],
             'name': device['name'],
@@ -207,6 +197,125 @@ def devices(request):
             'volume': device.get('volume_percent', 0),
         } for device in devices_list.get('devices', [])]
         return JsonResponse({'devices': device_list})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+def current_playback(request):
+    """
+    Get current playback state including track or episode info.
+    Uses Spotify API /v1/me/player endpoint per official documentation.
+    """
+    api = get_spotify_api(request)
+    if not api:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    
+    try:
+        # Use the official Spotify API endpoint with additional_types to include episodes
+        # According to Spotify API docs: additional_types can be "track,episode" to get both
+        response = api.get_current_playback(additional_types='track,episode')
+        
+        # 204 No Content means no active device or nothing playing
+        if response.status_code == 204:
+            return JsonResponse({
+                'is_playing': False,
+                'track': None,
+                'type': None,
+                'device': None
+            })
+        
+        # Handle other non-200 status codes
+        if response.status_code != 200:
+            error_msg = f'API error: {response.status_code}'
+            try:
+                error_data = response.json()
+                error_msg = error_data.get('error', {}).get('message', error_msg)
+            except:
+                pass
+            return JsonResponse({'error': error_msg}, status=response.status_code)
+        
+        playback = response.json()
+        
+        # Extract basic info from playback state
+        item = playback.get('item')
+        currently_playing_type = playback.get('currently_playing_type', 'track')
+        is_playing = playback.get('is_playing', False)
+        device = playback.get('device', {})
+        progress_ms = playback.get('progress_ms', 0)
+        
+        # Process item if available
+        if item:
+            item_type = item.get('type', currently_playing_type)
+            
+            if item_type == 'episode':
+                # Podcast episode - handle according to Spotify API structure
+                show = item.get('show', {})
+                images = item.get('images', [])
+                
+                episode_data = {
+                    'id': item.get('id'),
+                    'name': item.get('name', 'Unknown Episode'),
+                    'show': show.get('name', 'Unknown Podcast') if show else 'Unknown Podcast',
+                    'description': item.get('description', ''),
+                    'image': images[0]['url'] if images and len(images) > 0 else None,
+                    'duration_ms': item.get('duration_ms', 0),
+                    'progress_ms': progress_ms,
+                    'type': 'episode'
+                }
+                
+                return JsonResponse({
+                    'is_playing': is_playing,
+                    'track': episode_data,
+                    'type': 'episode',
+                    'device': {
+                        'id': device.get('id'),
+                        'name': device.get('name'),
+                        'type': device.get('type'),
+                    }
+                })
+            else:
+                # Track - handle according to Spotify API structure
+                album = item.get('album', {})
+                artists = item.get('artists', [])
+                album_images = album.get('images', [])
+                
+                track_data = {
+                    'id': item.get('id'),
+                    'name': item.get('name', 'Unknown Track'),
+                    'artists': [artist.get('name', 'Unknown Artist') for artist in artists],
+                    'album': album.get('name', 'Unknown Album'),
+                    'image': album_images[0]['url'] if album_images and len(album_images) > 0 else None,
+                    'duration_ms': item.get('duration_ms', 0),
+                    'progress_ms': progress_ms,
+                    'type': 'track'
+                }
+                
+                return JsonResponse({
+                    'is_playing': is_playing,
+                    'track': track_data,
+                    'type': 'track',
+                    'device': {
+                        'id': device.get('id'),
+                        'name': device.get('name'),
+                        'type': device.get('type'),
+                    }
+                })
+        
+        # No item in response - device might be active but no track/episode loaded
+        # This can happen when playback is paused or between tracks
+        return JsonResponse({
+            'is_playing': is_playing,
+            'track': None,
+            'type': None,
+            'device': {
+                'id': device.get('id'),
+                'name': device.get('name'),
+                'type': device.get('type'),
+            } if device else None
+        })
+        
+    except requests.exceptions.RequestException as e:
+        return JsonResponse({'error': f'Request failed: {str(e)}'}, status=500)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
 
@@ -225,7 +334,9 @@ def transfer_device(request):
     
     try:
         # Verify device exists and is available
-        devices_list = sp.devices()
+        response = sp.get_devices()
+        response.raise_for_status()
+        devices_list = response.json()
         device_found = False
         for device in devices_list.get('devices', []):
             if device['id'] == device_id:
@@ -262,7 +373,9 @@ def select_web_player(request):
     if device_id:
         try:
             # First verify the device exists
-            devices_list = sp.devices()
+            response = sp.get_devices()
+            response.raise_for_status()
+            devices_list = response.json()
             device_found = False
             for device in devices_list.get('devices', []):
                 if device['id'] == device_id:
@@ -405,7 +518,9 @@ def playlists(request):
         limit = int(request.GET.get('limit', 50))
         
         playlists_list = []
-        results = sp.current_user_playlists(limit=limit, offset=offset)
+        response = sp.get_user_playlists(limit=limit, offset=offset)
+        response.raise_for_status()
+        results = response.json()
         
         for playlist in results['items']:
             playlists_list.append({
@@ -443,7 +558,9 @@ def albums(request):
         limit = int(request.GET.get('limit', 50))
         
         albums_list = []
-        results = sp.current_user_saved_albums(limit=limit, offset=offset)
+        response = sp.get_user_saved_albums(limit=limit, offset=offset)
+        response.raise_for_status()
+        results = response.json()
         
         for item in results['items']:
             album = item['album']
@@ -480,7 +597,9 @@ def saved_tracks(request):
         limit = int(request.GET.get('limit', 50))
         
         tracks_list = []
-        results = sp.current_user_saved_tracks(limit=limit, offset=offset)
+        response = sp.get_user_saved_tracks(limit=limit, offset=offset)
+        response.raise_for_status()
+        results = response.json()
         
         for item in results['items']:
             track = item['track']
@@ -523,14 +642,18 @@ def discover(request):
         
         # Get random categories for playlists
         try:
-            categories = sp.categories(limit=50)
+            response = sp.get_categories(limit=50)
+            response.raise_for_status()
+            categories = response.json()
             if categories and categories.get('categories', {}).get('items'):
                 category_items = categories['categories']['items']
                 random_categories = random.sample(category_items, min(3, len(category_items)))
                 
                 for category in random_categories:
                     try:
-                        playlists = sp.category_playlists(category_id=category['id'], limit=10)
+                        response = sp.get_category_playlists(category_id=category['id'], limit=10)
+                        response.raise_for_status()
+                        playlists = response.json()
                         if playlists and playlists.get('playlists', {}).get('items'):
                             for playlist in playlists['playlists']['items'][:3]:  # Take 3 from each category
                                 discover_data['playlists'].append({
@@ -549,7 +672,9 @@ def discover(request):
         
         # Get featured playlists
         try:
-            featured = sp.featured_playlists(limit=20)
+            response = sp.get_featured_playlists(limit=20)
+            response.raise_for_status()
+            featured = response.json()
             if featured and featured.get('playlists', {}).get('items'):
                 for playlist in random.sample(featured['playlists']['items'], min(5, len(featured['playlists']['items']))):
                     discover_data['playlists'].append({
@@ -566,7 +691,9 @@ def discover(request):
         
         # Get new releases (random albums)
         try:
-            new_releases = sp.new_releases(limit=50)
+            response = sp.get_new_releases(limit=50)
+            response.raise_for_status()
+            new_releases = response.json()
             if new_releases and new_releases.get('albums', {}).get('items'):
                 random_albums = random.sample(new_releases['albums']['items'], min(10, len(new_releases['albums']['items'])))
                 for album in random_albums:
@@ -584,7 +711,9 @@ def discover(request):
         
         # Get random recommendations using random genres
         try:
-            available_genres = sp.recommendation_genre_seeds()
+            response = sp.get_recommendation_genre_seeds()
+            response.raise_for_status()
+            available_genres = response.json()
             if available_genres and available_genres.get('genres'):
                 genres_list = available_genres['genres']
                 random_genres = random.sample(genres_list, min(5, len(genres_list)))
@@ -592,7 +721,9 @@ def discover(request):
                 # Get recommendations for each genre
                 for genre in random_genres:
                     try:
-                        recommendations = sp.recommendations(seed_genres=[genre], limit=10)
+                        response = sp.get_recommendations(seed_genres=[genre], limit=10)
+                        response.raise_for_status()
+                        recommendations = response.json()
                         if recommendations and recommendations.get('tracks'):
                             for track in recommendations['tracks'][:3]:  # Take 3 from each genre
                                 discover_data['tracks'].append({
@@ -639,11 +770,15 @@ def album_detail(request):
     
     try:
         # Get album details
-        album = sp.album(album_id)
+        response = sp.get_album(album_id)
+        response.raise_for_status()
+        album = response.json()
         
         # Get all tracks in the album
         tracks_list = []
         results = album['tracks']
+        offset = 0
+        limit = 50
         
         while True:
             for track in results['items']:
@@ -661,7 +796,11 @@ def album_detail(request):
                     })
             
             if results['next']:
-                results = sp.next(results)
+                # Parse next URL to get offset
+                offset += limit
+                response = sp.get(f'albums/{album_id}/tracks', params={'limit': limit, 'offset': offset})
+                response.raise_for_status()
+                results = response.json()
             else:
                 break
         
@@ -692,11 +831,18 @@ def playlist_detail(request):
     
     try:
         # Get playlist details
-        playlist = sp.playlist(playlist_id)
+        response = sp.get_playlist(playlist_id)
+        response.raise_for_status()
+        playlist = response.json()
         
         # Get all tracks in the playlist
         tracks_list = []
-        results = sp.playlist_tracks(playlist_id, limit=100)
+        offset = 0
+        limit = 100
+        
+        response = sp.get_playlist_tracks(playlist_id, limit=limit, offset=offset)
+        response.raise_for_status()
+        results = response.json()
         
         while results:
             for item in results['items']:
@@ -713,7 +859,10 @@ def playlist_detail(request):
                     })
             
             if results['next']:
-                results = sp.next(results)
+                offset += limit
+                response = sp.get_playlist_tracks(playlist_id, limit=limit, offset=offset)
+                response.raise_for_status()
+                results = response.json()
             else:
                 break
         

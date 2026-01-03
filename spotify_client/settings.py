@@ -10,7 +10,17 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-me-in-production')
+# Load SECRET_KEY from config file (production) or .env (development)
+try:
+    from spotify_client.config import load_config
+    config = load_config()
+    if config.has_section("django") and config.get("django", "secret_key", fallback=""):
+        SECRET_KEY = config.get("django", "secret_key")
+    else:
+        SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-me-in-production')
+except Exception:
+    # Fallback to environment variable if config loading fails
+    SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-me-in-production')
 
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
@@ -24,6 +34,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'player',
+    'wizard',
 ]
 
 MIDDLEWARE = [
@@ -83,13 +94,13 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Spotify API Configuration
-SPOTIPY_CLIENT_ID = os.getenv('SPOTIPY_CLIENT_ID', '')
-SPOTIPY_CLIENT_SECRET = os.getenv('SPOTIPY_CLIENT_SECRET', '')
-SPOTIPY_REDIRECT_URI = os.getenv('SPOTIPY_REDIRECT_URI', 'http://127.0.0.1:8000/callback')
+SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID', '')
+SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET', '')
+SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI', 'http://127.0.0.1:8000/callback')
 

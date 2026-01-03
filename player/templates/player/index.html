@@ -5,793 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spotify Client</title>
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #ffffff;
-            color: #1a1a1a;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            position: relative;
-        }
-        
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            color: #1a1a1a;
-        }
-        
-        .logout-btn {
-            position: absolute;
-            top: 0;
-            right: 0;
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            color: #1a1a1a;
-            padding: 10px 20px;
-            border-radius: 0;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-weight: 500;
-            text-decoration: none;
-            display: inline-block;
-        }
-        
-        .logout-btn:hover {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .player-card {
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-            padding: 30px;
-            margin-bottom: 30px;
-        }
-        
-        .track-info {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        
-        .track-image {
-            width: 200px;
-            height: 200px;
-            border-radius: 0;
-            margin: 0 auto 20px;
-            object-fit: cover;
-            border: 2px solid #1a1a1a;
-        }
-        
-        .track-name {
-            font-size: 1.8rem;
-            font-weight: 600;
-            margin-bottom: 10px;
-        }
-        
-        .track-artist {
-            font-size: 1.2rem;
-            margin-bottom: 5px;
-        }
-        
-        .track-album {
-            font-size: 1rem;
-        }
-        
-        .controls {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-        
-        .btn {
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            color: #1a1a1a;
-            padding: 15px 30px;
-            border-radius: 0;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-weight: 500;
-        }
-        
-        .btn:hover:not(:disabled) {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .btn:active {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            background: #f5f5f5;
-            color: #999999;
-        }
-        
-        .btn-play {
-            background: #1a1a1a;
-            border-color: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .btn-play:hover:not(:disabled) {
-            background: #ffffff;
-            color: #1a1a1a;
-        }
-        
-        .search-section {
-            margin-top: 30px;
-        }
-        
-        .search-box {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        
-        .search-input {
-            flex: 1;
-            padding: 12px 20px;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-            background: #ffffff;
-            color: #1a1a1a;
-            font-size: 1rem;
-            outline: none;
-        }
-        
-        .search-input::placeholder {
-            color: #999999;
-        }
-        
-        .search-input:focus {
-            border-color: #1a1a1a;
-            outline: none;
-        }
-        
-        .search-results {
-            display: grid;
-            gap: 10px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        
-        .search-result-item {
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-            padding: 15px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .search-result-item:hover {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .result-image {
-            width: 60px;
-            height: 60px;
-            border-radius: 0;
-            object-fit: cover;
-            border: 2px solid #1a1a1a;
-        }
-        
-        .result-info {
-            flex: 1;
-            color: #1a1a1a;
-        }
-        
-        .search-result-item:hover .result-info {
-            color: #ffffff;
-        }
-        
-        .result-name {
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-        
-        .result-artist {
-            font-size: 0.9rem;
-        }
-        
-        .status-indicator {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 0.9rem;
-            color: #1a1a1a;
-        }
-        
-        .player-status {
-            text-align: center;
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-            font-size: 0.9rem;
-            color: #1a1a1a;
-        }
-        
-        .tabs-container {
-            margin-top: 30px;
-            border: 2px solid #1a1a1a;
-            background: #ffffff;
-        }
-        
-        .tabs-nav {
-            display: flex;
-            border-bottom: 2px solid #1a1a1a;
-        }
-        
-        .tab-button {
-            flex: 1;
-            background: #ffffff;
-            border: none;
-            border-right: 2px solid #1a1a1a;
-            color: #1a1a1a;
-            padding: 15px 20px;
-            font-size: 1rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .tab-button:last-child {
-            border-right: none;
-        }
-        
-        .tab-button:hover {
-            background: #f5f5f5;
-        }
-        
-        .tab-button.active {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .tab-content {
-            display: none;
-            padding: 30px;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
-        .playlists-section {
-            margin-top: 0;
-        }
-        
-        .playlists-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        
-        .playlists-header h3 {
-            font-size: 1.3rem;
-            color: #1a1a1a;
-        }
-        
-        .albums-section, .songs-section, .discover-section {
-            margin-top: 0;
-        }
-        
-        .section-header {
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        
-        .discover-content {
-            display: flex;
-            flex-direction: column;
-            gap: 30px;
-        }
-        
-        .discover-section-group {
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-            padding: 20px;
-        }
-        
-        .discover-section-title {
-            font-size: 1.2rem;
-            font-weight: 600;
-            color: #1a1a1a;
-            margin-bottom: 15px;
-            border-bottom: 2px solid #1a1a1a;
-            padding-bottom: 10px;
-        }
-        
-        .discover-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 15px;
-        }
-        
-        .discover-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        .discover-item {
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-            padding: 15px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .discover-item:hover {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .discover-item-image {
-            width: 100%;
-            aspect-ratio: 1;
-            border-radius: 0;
-            object-fit: cover;
-            margin-bottom: 10px;
-            border: 2px solid #1a1a1a;
-        }
-        
-        .discover-item-name {
-            font-weight: 600;
-            margin-bottom: 5px;
-            font-size: 0.95rem;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: #1a1a1a;
-        }
-        
-        .discover-item:hover .discover-item-name {
-            color: #ffffff;
-        }
-        
-        .discover-item-info {
-            font-size: 0.8rem;
-            color: #1a1a1a;
-        }
-        
-        .discover-item:hover .discover-item-info {
-            color: #ffffff;
-        }
-        
-        .discover-track-item {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-            padding: 10px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .discover-track-item:hover {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .discover-track-image {
-            width: 50px;
-            height: 50px;
-            border-radius: 0;
-            object-fit: cover;
-            border: 2px solid #1a1a1a;
-        }
-        
-        .discover-track-info {
-            flex: 1;
-        }
-        
-        .discover-track-name {
-            font-weight: 600;
-            margin-bottom: 3px;
-            font-size: 0.9rem;
-            color: #1a1a1a;
-        }
-        
-        .discover-track-item:hover .discover-track-name {
-            color: #ffffff;
-        }
-        
-        .discover-track-artist {
-            font-size: 0.8rem;
-            color: #1a1a1a;
-        }
-        
-        .discover-track-item:hover .discover-track-artist {
-            color: #ffffff;
-        }
-        
-        .section-header h3 {
-            font-size: 1.3rem;
-            color: #1a1a1a;
-        }
-        
-        .albums-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 15px;
-            max-height: 500px;
-            overflow-y: auto;
-            padding: 10px;
-        }
-        
-        .album-item {
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-            padding: 15px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            text-align: center;
-        }
-        
-        .album-item:hover {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .album-image {
-            width: 100%;
-            aspect-ratio: 1;
-            border-radius: 0;
-            object-fit: cover;
-            margin-bottom: 10px;
-            border: 2px solid #1a1a1a;
-        }
-        
-        .album-name {
-            font-weight: 600;
-            margin-bottom: 5px;
-            font-size: 0.95rem;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: #1a1a1a;
-        }
-        
-        .album-item:hover .album-name {
-            color: #ffffff;
-        }
-        
-        .album-info {
-            font-size: 0.8rem;
-            color: #1a1a1a;
-        }
-        
-        .album-item:hover .album-info {
-            color: #ffffff;
-        }
-        
-        .sort-controls {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .sort-btn {
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            color: #1a1a1a;
-            padding: 8px 15px;
-            border-radius: 0;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .sort-btn:hover {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .sort-btn.active {
-            background: #1a1a1a;
-            border-color: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .playlists-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 15px;
-            max-height: 500px;
-            overflow-y: auto;
-            padding: 10px;
-        }
-        
-        .playlist-item {
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-            padding: 15px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            text-align: center;
-        }
-        
-        .playlist-item:hover {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .playlist-image {
-            width: 100%;
-            aspect-ratio: 1;
-            border-radius: 0;
-            object-fit: cover;
-            margin-bottom: 10px;
-            border: 2px solid #1a1a1a;
-        }
-        
-        .playlist-name {
-            font-weight: 600;
-            margin-bottom: 5px;
-            font-size: 0.95rem;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: #1a1a1a;
-        }
-        
-        .playlist-item:hover .playlist-name {
-            color: #ffffff;
-        }
-        
-        .playlist-info {
-            font-size: 0.8rem;
-            color: #1a1a1a;
-        }
-        
-        .playlist-item:hover .playlist-info {
-            color: #ffffff;
-        }
-        
-        .playlist-detail-view {
-            display: none;
-            margin-top: 30px;
-        }
-        
-        .playlist-detail-header {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 30px;
-            align-items: center;
-        }
-        
-        .playlist-detail-image {
-            width: 200px;
-            height: 200px;
-            border-radius: 0;
-            object-fit: cover;
-            border: 2px solid #1a1a1a;
-        }
-        
-        .playlist-detail-info h2 {
-            margin: 0 0 10px 0;
-            font-size: 2rem;
-            color: #1a1a1a;
-        }
-        
-        .playlist-detail-info p {
-            margin: 5px 0;
-            color: #1a1a1a;
-        }
-        
-        .playlist-detail-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        
-        .tracks-list {
-            max-height: 500px;
-            overflow-y: auto;
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-            padding: 15px;
-        }
-        
-        .track-item {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 12px;
-            border-bottom: 2px solid #1a1a1a;
-            cursor: pointer;
-            transition: background 0.2s ease;
-        }
-        
-        .track-item:last-child {
-            border-bottom: none;
-        }
-        
-        .track-item:hover {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .track-item .track-image {
-            width: 50px;
-            height: 50px;
-            border-radius: 0;
-            object-fit: cover;
-            border: 2px solid #1a1a1a;
-        }
-        
-        .track-info {
-            flex: 1;
-            color: #1a1a1a;
-        }
-        
-        .track-item:hover .track-info {
-            color: #ffffff;
-        }
-        
-        .track-item .track-name {
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-        
-        .track-item .track-artist {
-            font-size: 0.85rem;
-        }
-        
-        .track-duration {
-            font-size: 0.85rem;
-            min-width: 50px;
-            text-align: right;
-            color: #1a1a1a;
-        }
-        
-        .track-item:hover .track-duration {
-            color: #ffffff;
-        }
-        
-        .back-button {
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            color: #1a1a1a;
-            padding: 10px 20px;
-            border-radius: 0;
-            cursor: pointer;
-            font-size: 0.9rem;
-            margin-bottom: 20px;
-            transition: all 0.2s ease;
-        }
-        
-        .back-button:hover {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .device-selector {
-            margin-top: 20px;
-            padding: 20px;
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-        }
-        
-        .device-selector h3 {
-            font-size: 1.1rem;
-            margin-bottom: 15px;
-            text-align: center;
-            color: #1a1a1a;
-        }
-        
-        .device-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        .device-item {
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            border-radius: 0;
-            padding: 15px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .device-item:hover {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .device-item.active {
-            background: #1a1a1a;
-            border-color: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .device-info {
-            flex: 1;
-            color: #1a1a1a;
-        }
-        
-        .device-item:hover .device-info,
-        .device-item.active .device-info {
-            color: #ffffff;
-        }
-        
-        .device-name {
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-        
-        .device-type {
-            font-size: 0.85rem;
-        }
-        
-        .device-select-btn {
-            background: #ffffff;
-            border: 2px solid #1a1a1a;
-            color: #1a1a1a;
-            padding: 8px 20px;
-            border-radius: 0;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .device-item:hover .device-select-btn,
-        .device-item.active .device-select-btn {
-            background: #ffffff;
-            border-color: #ffffff;
-            color: #1a1a1a;
-        }
-        
-        .device-select-btn:hover {
-            background: #1a1a1a;
-            color: #ffffff;
-        }
-    </style>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
 </head>
 <body>
     <div class="container">
@@ -805,6 +20,10 @@
             
             <div class="track-info" id="trackInfo">
                 <div class="track-name">No track playing</div>
+            </div>
+            
+            <div style="text-align: center; margin-bottom: 15px;">
+                <button class="btn" onclick="checkCurrentPlayback()" style="font-size: 0.9rem; padding: 8px 15px;">Refresh Playback Info</button>
             </div>
             
             <div class="controls">
@@ -998,12 +217,26 @@
         function updateTrackDisplay() {
             if (currentTrack) {
                 const trackInfo = document.getElementById('trackInfo');
-                trackInfo.innerHTML = `
-                    <img src="${currentTrack.album.images[0]?.url || ''}" alt="Album cover" class="track-image">
-                    <div class="track-name">${currentTrack.name}</div>
-                    <div class="track-artist">${currentTrack.artists.map(a => a.name).join(', ')}</div>
-                    <div class="track-album">${currentTrack.album.name}</div>
-                `;
+                
+                // Handle episodes (podcasts) from Web Playback SDK
+                if (currentTrack.type === 'episode' || currentTrack.content_type === 'podcast') {
+                    const album = currentTrack.album || {};
+                    const images = album.images || [];
+                    trackInfo.innerHTML = `
+                        <img src="${images[0]?.url || ''}" alt="Podcast cover" class="track-image">
+                        <div class="track-name">${currentTrack.name}</div>
+                        <div class="track-artist">${album.name || 'Podcast'}</div>
+                        <div class="track-album">Episode</div>
+                    `;
+                } else {
+                    // Regular track
+                    trackInfo.innerHTML = `
+                        <img src="${currentTrack.album.images[0]?.url || ''}" alt="Album cover" class="track-image">
+                        <div class="track-name">${currentTrack.name}</div>
+                        <div class="track-artist">${currentTrack.artists.map(a => a.name).join(', ')}</div>
+                        <div class="track-album">${currentTrack.album.name}</div>
+                    `;
+                }
             }
         }
         
@@ -1014,6 +247,181 @@
             } else {
                 playBtn.textContent = '▶ Play';
             }
+        }
+        
+        // Store current track data to avoid unnecessary updates
+        let currentTrackData = null;
+        
+        function updateTrackDisplayFromAPI(trackData) {
+            if (trackData) {
+                const trackInfo = document.getElementById('trackInfo');
+                if (!trackInfo) {
+                    console.error('trackInfo element not found');
+                    return;
+                }
+                
+                // Check if track has actually changed (by ID)
+                const trackChanged = !currentTrackData || currentTrackData.id !== trackData.id;
+                const imageChanged = trackChanged || (currentTrackData && currentTrackData.image !== trackData.image);
+                
+                // Only update if track changed or if this is first load
+                if (trackChanged) {
+                    // Track changed - rebuild the entire display
+                    if (trackData.type === 'episode') {
+                        const imageHtml = trackData.image ? `<img src="${trackData.image}" alt="Podcast cover" class="track-image">` : '';
+                        trackInfo.innerHTML = `
+                            ${imageHtml}
+                            <div class="track-name">${trackData.name}</div>
+                            <div class="track-artist">${trackData.show || 'Podcast'}</div>
+                            <div class="track-album">Episode</div>
+                        `;
+                    } else {
+                        const imageHtml = trackData.image ? `<img src="${trackData.image}" alt="Album cover" class="track-image">` : '';
+                        trackInfo.innerHTML = `
+                            ${imageHtml}
+                            <div class="track-name">${trackData.name}</div>
+                            <div class="track-artist">${trackData.artists ? trackData.artists.join(', ') : 'Unknown Artist'}</div>
+                            <div class="track-album">${trackData.album || 'Unknown Album'}</div>
+                        `;
+                    }
+                    // Store current track data
+                    currentTrackData = {
+                        id: trackData.id,
+                        name: trackData.name,
+                        image: trackData.image,
+                        type: trackData.type
+                    };
+                } else {
+                    // Same track - only update text if it changed, never update image
+                    const nameEl = trackInfo.querySelector('.track-name');
+                    const artistEl = trackInfo.querySelector('.track-artist');
+                    const albumEl = trackInfo.querySelector('.track-album');
+                    
+                    if (nameEl && nameEl.textContent !== trackData.name) {
+                        nameEl.textContent = trackData.name;
+                    }
+                    
+                    if (trackData.type === 'episode') {
+                        if (artistEl && artistEl.textContent !== (trackData.show || 'Podcast')) {
+                            artistEl.textContent = trackData.show || 'Podcast';
+                        }
+                        if (albumEl && albumEl.textContent !== 'Episode') {
+                            albumEl.textContent = 'Episode';
+                        }
+                    } else {
+                        const artistsText = trackData.artists ? trackData.artists.join(', ') : 'Unknown Artist';
+                        if (artistEl && artistEl.textContent !== artistsText) {
+                            artistEl.textContent = artistsText;
+                        }
+                        if (albumEl && albumEl.textContent !== (trackData.album || 'Unknown Album')) {
+                            albumEl.textContent = trackData.album || 'Unknown Album';
+                        }
+                    }
+                }
+            } else {
+                console.error('updateTrackDisplayFromAPI called with null/undefined trackData');
+                currentTrackData = null;
+            }
+        }
+        
+        function updatePlayButtonFromAPI(isPlaying) {
+            const playBtn = document.getElementById('playBtn');
+            if (playBtn) {
+                playBtn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+            }
+        }
+        
+        function checkCurrentPlayback() {
+            // Check current playback for external devices
+            fetch('/current-playback/')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        console.log('Current playback error:', data.error);
+                        return;
+                    }
+                    
+                    // Get the actual active device ID from the API response (the device that's actually playing)
+                    const activeDeviceId = data.device?.id || data.debug?.device_id;
+                    // Check if the active device is the web player
+                    const isWebPlayerActive = activeDeviceId && deviceId && activeDeviceId === deviceId;
+                    
+                    console.log('Playback check:', {
+                        activeDeviceId,
+                        webPlayerDeviceId: deviceId,
+                        isWebPlayerActive,
+                        hasTrack: !!data.track,
+                        hasCurrentTrack: !!currentTrack,
+                        isPlaying: data.is_playing,
+                        currentlyPlayingType: data.debug?.currently_playing_type
+                    });
+                    
+                    // If we have track/episode data from API
+                    if (data.track) {
+                        // If the active device is NOT the web player, always update from API
+                        // OR if web player is active but we don't have SDK track data yet
+                        if (!isWebPlayerActive || !currentTrack) {
+                            console.log('Updating display from API track data');
+                            updateTrackDisplayFromAPI(data.track);
+                            updatePlayButtonFromAPI(data.is_playing);
+                        }
+                        // Otherwise, web player is active and has SDK track data, so skip (SDK will handle it)
+                    } else {
+                        // No track data from API
+                        // If it's an episode but API doesn't return item, show generic episode info
+                        if (data.debug && data.debug.currently_playing_type === 'episode' && data.debug.is_playing) {
+                            console.log('Episode detected, isWebPlayerActive:', isWebPlayerActive, 'currentTrack:', currentTrack);
+                            // Only show generic episode if web player is NOT active OR web player doesn't have track data
+                            if (!isWebPlayerActive || !currentTrack) {
+                                console.log('Showing generic episode');
+                                const episodeData = {
+                                    name: 'Podcast Episode',
+                                    show: 'Unknown Podcast',
+                                    album: 'Episode',
+                                    image: null,
+                                    type: 'episode'
+                                };
+                                updateTrackDisplayFromAPI(episodeData);
+                                updatePlayButtonFromAPI(data.is_playing);
+                            } else {
+                                console.log('Skipping - web player active with track');
+                            }
+                        } else if (!data.track && !currentTrack) {
+                            // Nothing playing anywhere
+                            console.log('Nothing playing');
+                            const trackInfo = document.getElementById('trackInfo');
+                            if (trackInfo) {
+                                let message = 'No track playing';
+                                if (data.debug) {
+                                    message += ` (Device: ${data.debug.device_name || 'Unknown'}, Playing: ${data.debug.is_playing})`;
+                                }
+                                trackInfo.innerHTML = `<div class="track-name">${message}</div>`;
+                            }
+                            updatePlayButtonFromAPI(false);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Current playback fetch error:', error);
+                });
+        }
+        
+        // Check current playback on page load and periodically
+        // Wait for page to be ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                checkCurrentPlayback();
+                setInterval(checkCurrentPlayback, 3000); // Check every 3 seconds
+            });
+        } else {
+            // DOM is already ready
+            checkCurrentPlayback();
+            setInterval(checkCurrentPlayback, 3000); // Check every 3 seconds
         }
         
         function togglePlayback() {

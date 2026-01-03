@@ -1,0 +1,70 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpotiPi Setup</title>
+    <link rel="stylesheet" href="{% static 'wizard/css/wizard.css' %}">
+</head>
+<body>
+    <h1>SpotiPi Setup Wizard</h1>
+    
+    {% if messages %}
+        {% for message in messages %}
+            <div class="error">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+    
+    <p>Welcome to SpotiPi! Please configure your Spotify API credentials.</p>
+    <p class="help-text">
+        Get your Client ID and Client Secret from the 
+        <a href="https://developer.spotify.com/dashboard" target="_blank">Spotify Developer Dashboard</a>. 
+        Create a new app if you haven't already.
+    </p>
+    
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label for="client_id">Spotify Client ID</label>
+            <input type="text" name="client_id" id="client_id" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="client_secret">Spotify Client Secret</label>
+            <input type="text" name="client_secret" id="client_secret" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="redirect_uri">Redirect URI (Callback URL)</label>
+            <input type="text" name="redirect_uri" id="redirect_uri" 
+                   value="{{ default_redirect_uri|default:'http://127.0.0.1:8000/callback' }}" required>
+            <p class="help-text">
+                <strong>Important:</strong> This must be the IP address of your Raspberry Pi (not 127.0.0.1). 
+                The value shown above has been automatically detected. Make sure this exact URL is also added 
+                in your <a href="https://developer.spotify.com/dashboard" target="_blank">Spotify Developer Dashboard</a> 
+                under your app's settings → Redirect URIs.
+            </p>
+        </div>
+        
+        <div class="form-group">
+            <label for="audio_output">Audio Output</label>
+            <select name="audio_output" id="audio_output" required>
+                {% for option in audio_options %}
+                <option value="{{ option.value }}" {% if option.value == 'analog' %}selected{% endif %}>
+                    {{ option.name }} - {{ option.description }}
+                </option>
+                {% endfor %}
+            </select>
+            <p class="help-text">
+                Select your audio output device. For I2S DACs, this will configure /boot/config.txt automatically.
+                <strong>A reboot is required for audio changes to take effect.</strong>
+            </p>
+        </div>
+        
+        <button type="submit">Save & Continue</button>
+    </form>
+</body>
+</html>
+

@@ -6,6 +6,7 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('player.urls')),
+    path('setup/', include('wizard.urls')),  # Wizard must come before player URLs - matches /setup/ and /setup/done/
+    path('', include('player.urls')),  # Player URLs last - matches everything else
 ]
 

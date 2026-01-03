@@ -1,0 +1,58 @@
+@import "variables.css";
+@import "base.css";
+
+/* Login Styles */
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: var(--color-bg);
+    color: var(--color-text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.login-container {
+    text-align: center;
+    background: var(--color-bg);
+    border: var(--border-width) solid var(--color-text);
+    border-radius: var(--border-radius);
+    padding: 60px 40px;
+    max-width: 400px;
+    width: 100%;
+}
+
+h1 {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+    color: var(--color-text);
+    font-weight: 600;
+}
+
+p {
+    margin-bottom: 30px;
+    font-size: 1.1rem;
+    color: var(--color-text);
+}
+
+.btn-login {
+    background: var(--color-bg);
+    border: var(--border-width) solid var(--color-text);
+    color: var(--color-text);
+    padding: 15px 40px;
+    border-radius: var(--border-radius);
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: var(--transition);
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn-login:hover {
+    background: var(--color-text);
+    color: var(--color-bg);
+}
+    

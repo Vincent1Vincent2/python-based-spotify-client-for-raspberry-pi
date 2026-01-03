@@ -9,6 +9,7 @@ urlpatterns = [
     path('token/', views.token, name='token'),
     path('search/', views.search, name='search'),
     path('devices/', views.devices, name='devices'),
+    path('current-playback/', views.current_playback, name='current_playback'),
     path('transfer/', views.transfer_device, name='transfer'),
     path('select-web-player/', views.select_web_player, name='select_web_player'),
     path('play/', views.play, name='play'),
