@@ -1,7 +1,10 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
 from spotify_client.config import save_config, is_configured
 from wizard.audio_config import configure_audio_output, get_audio_options
+from wizard.wifi_config import configure_wifi, scan_wifi_networks
 import socket
 
 
@@ -47,11 +50,16 @@ def setup_view(request):
         client_id = request.POST.get("client_id", "").strip()
         client_secret = request.POST.get("client_secret", "").strip()
         redirect_uri = request.POST.get("redirect_uri", "").strip()
-        audio_output = request.POST.get("audio_output", "analog").strip()
+        audio_output = request.POST.get("audio_output_final", "analog").strip()
+        
+        # WiFi configuration (optional - can be skipped if using Ethernet)
+        wifi_ssid = request.POST.get("wifi_ssid", "").strip()
+        wifi_password = request.POST.get("wifi_password", "").strip()
+        skip_wifi = request.POST.get("skip_wifi", "false") == "true"
         
         # Basic validation
         if not all([client_id, client_secret, redirect_uri]):
-            messages.error(request, "All fields are required.")
+            messages.error(request, "Spotify credentials are required.")
             audio_options = get_audio_options()
             return render(request, "wizard/setup.html", {
                 'default_redirect_uri': default_redirect_uri,
@@ -68,6 +76,14 @@ def setup_view(request):
             })
         
         try:
+            # Configure WiFi if provided
+            if not skip_wifi and wifi_ssid:
+                wifi_success, wifi_message = configure_wifi(wifi_ssid, wifi_password)
+                if not wifi_success:
+                    messages.warning(request, f"WiFi configuration warning: {wifi_message}")
+                else:
+                    messages.info(request, wifi_message)
+            
             # Configure audio output (modify /boot/config.txt)
             audio_success, audio_message = configure_audio_output(audio_output)
             if not audio_success:
@@ -103,6 +119,21 @@ def setup_view(request):
         'default_redirect_uri': default_redirect_uri,
         'audio_options': audio_options
     })
+
+@csrf_exempt
+def scan_wifi_view(request):
+    """
+    API endpoint to scan for WiFi networks.
+    Returns JSON list of available networks.
+    """
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        networks = scan_wifi_networks()
+        return JsonResponse({'networks': networks}, safe=False)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 def setup_done_view(request):
     """

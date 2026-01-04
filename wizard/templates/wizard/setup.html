@@ -23,8 +23,39 @@
         Create a new app if you haven't already.
     </p>
     
-    <form method="post">
+    <form method="post" id="setupForm">
         {% csrf_token %}
+        
+        <h2>WiFi Configuration</h2>
+        <p class="help-text">Configure WiFi connection (optional if using Ethernet).</p>
+        
+        <div class="form-group">
+            <label for="wifi_network">WiFi Network</label>
+            <select name="wifi_ssid" id="wifi_network" required>
+                <option value="">Scanning for networks...</option>
+                <option value="__manual__">Enter manually...</option>
+            </select>
+            <button type="button" id="scanWifiBtn" class="scan-btn">Scan for Networks</button>
+            <input type="text" name="wifi_ssid_manual" id="wifi_ssid_manual" placeholder="Enter WiFi network name" style="display: none; margin-top: 10px;">
+            <p class="help-text" id="wifiStatus">Scanning for available networks...</p>
+        </div>
+        
+        <div class="form-group" id="wifiPasswordGroup" style="display: none;">
+            <label for="wifi_password">WiFi Password</label>
+            <input type="password" name="wifi_password" id="wifi_password" placeholder="Enter WiFi password">
+            <p class="help-text">Leave empty for open networks.</p>
+        </div>
+        
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" name="skip_wifi" id="skip_wifi" value="true">
+                <span>Skip WiFi (using Ethernet)</span>
+            </label>
+        </div>
+        
+        <hr style="margin: 30px 0; border: none; border-top: 2px solid #000;">
+        
+        <h2>Spotify Configuration</h2>
         
         <div class="form-group">
             <label for="client_id">Spotify Client ID</label>
@@ -49,22 +80,214 @@
         </div>
         
         <div class="form-group">
-            <label for="audio_output">Audio Output</label>
-            <select name="audio_output" id="audio_output" required>
-                {% for option in audio_options %}
-                <option value="{{ option.value }}" {% if option.value == 'analog' %}selected{% endif %}>
-                    {{ option.name }} - {{ option.description }}
-                </option>
-                {% endfor %}
-            </select>
-            <p class="help-text">
-                Select your audio output device. For I2S DACs, this will configure /boot/config.txt automatically.
+            <label>Audio Output</label>
+            <p class="help-text" style="margin-bottom: 15px;">Select your audio output type:</p>
+            
+            <div class="audio-type-selection">
+                <label class="audio-type-option">
+                    <input type="radio" name="audio_type" value="analog" checked>
+                    <div class="audio-type-content">
+                        <strong>3.5mm Analog Jack</strong>
+                        <span>Built-in audio jack (default)</span>
+                    </div>
+                </label>
+                
+                <label class="audio-type-option">
+                    <input type="radio" name="audio_type" value="hdmi">
+                    <div class="audio-type-content">
+                        <strong>HDMI Audio</strong>
+                        <span>Audio through HDMI connection</span>
+                    </div>
+                </label>
+                
+                <label class="audio-type-option">
+                    <input type="radio" name="audio_type" value="i2s">
+                    <div class="audio-type-content">
+                        <strong>I2S DAC</strong>
+                        <span>External I2S audio board</span>
+                    </div>
+                </label>
+            </div>
+            
+            <div class="form-group" id="i2sDacSelection" style="display: none; margin-top: 15px;">
+                <label for="audio_output">Select I2S DAC Model</label>
+                <select name="audio_output" id="audio_output">
+                    {% for option in audio_options %}
+                    {% if option.value != 'analog' and option.value != 'hdmi' %}
+                    <option value="{{ option.value }}">
+                        {{ option.name }} - {{ option.description }}
+                    </option>
+                    {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <input type="hidden" name="audio_output_final" id="audio_output_final" value="analog" required>
+            
+            <p class="help-text" style="margin-top: 15px;">
+                Audio configuration will modify /boot/config.txt automatically.
                 <strong>A reboot is required for audio changes to take effect.</strong>
             </p>
         </div>
         
         <button type="submit">Save & Continue</button>
     </form>
+    
+    <script>
+        const wifiNetwork = document.getElementById('wifi_network');
+        const wifiSsidManual = document.getElementById('wifi_ssid_manual');
+        const wifiPasswordGroup = document.getElementById('wifiPasswordGroup');
+        const wifiPassword = document.getElementById('wifi_password');
+        const scanWifiBtn = document.getElementById('scanWifiBtn');
+        const wifiStatus = document.getElementById('wifiStatus');
+        const skipWifi = document.getElementById('skip_wifi');
+        const setupForm = document.getElementById('setupForm');
+        
+        // Function to scan for WiFi networks
+        async function scanForNetworks() {
+            scanWifiBtn.disabled = true;
+            scanWifiBtn.textContent = 'Scanning...';
+            wifiStatus.textContent = 'Scanning for networks...';
+            wifiNetwork.disabled = true;
+            
+            try {
+                const response = await fetch('/setup/scan-wifi/');
+                const data = await response.json();
+                
+                if (data.networks && data.networks.length > 0) {
+                    // Clear existing options (except "Enter manually...")
+                    while (wifiNetwork.options.length > 1) {
+                        wifiNetwork.remove(0);
+                    }
+                    
+                    // Add scanned networks
+                    data.networks.forEach(network => {
+                        const option = document.createElement('option');
+                        option.value = network.ssid;
+                        option.textContent = network.ssid + (network.signal ? ` (${network.signal}%)` : '');
+                        wifiNetwork.insertBefore(option, wifiNetwork.lastElementChild);
+                    });
+                    
+                    wifiStatus.textContent = `Found ${data.networks.length} network(s). Select a network or enter manually.`;
+                } else {
+                    // Keep default options
+                    wifiNetwork.options[0].textContent = 'No networks found';
+                    wifiStatus.textContent = 'No networks found. You can enter manually or skip WiFi.';
+                }
+            } catch (error) {
+                wifiNetwork.options[0].textContent = 'Error scanning';
+                wifiStatus.textContent = 'Error scanning networks. You can enter manually or skip WiFi.';
+                console.error('WiFi scan error:', error);
+            } finally {
+                scanWifiBtn.disabled = false;
+                scanWifiBtn.textContent = 'Scan for Networks';
+                wifiNetwork.disabled = false;
+            }
+        }
+        
+        // Scan button click handler
+        scanWifiBtn.addEventListener('click', scanForNetworks);
+        
+        // Handle manual entry option
+        wifiNetwork.addEventListener('change', function() {
+            if (this.value === '__manual__') {
+                wifiSsidManual.style.display = 'block';
+                wifiSsidManual.name = 'wifi_ssid';
+                wifiNetwork.name = '';
+                wifiPasswordGroup.style.display = 'block';
+            } else {
+                wifiSsidManual.style.display = 'none';
+                wifiSsidManual.name = 'wifi_ssid_manual';
+                wifiNetwork.name = 'wifi_ssid';
+                if (this.value) {
+                    wifiPasswordGroup.style.display = 'block';
+                } else {
+                    wifiPasswordGroup.style.display = 'none';
+                }
+            }
+        });
+        
+        // Handle skip WiFi checkbox
+        skipWifi.addEventListener('change', function() {
+            if (this.checked) {
+                wifiNetwork.disabled = true;
+                wifiSsidManual.disabled = true;
+                wifiPasswordGroup.style.display = 'none';
+                scanWifiBtn.disabled = true;
+            } else {
+                wifiNetwork.disabled = false;
+                wifiSsidManual.disabled = false;
+                scanWifiBtn.disabled = false;
+                if (wifiNetwork.value || wifiSsidManual.value) {
+                    wifiPasswordGroup.style.display = 'block';
+                }
+            }
+        });
+        
+        // Show password field when network is selected
+        wifiNetwork.addEventListener('change', function() {
+            if (this.value && this.value !== '__manual__' && this.value !== '') {
+                wifiPasswordGroup.style.display = 'block';
+            }
+        });
+        
+        // Handle form submission - combine manual SSID with network select
+        setupForm.addEventListener('submit', function(e) {
+            if (wifiSsidManual.style.display === 'block' && wifiSsidManual.value) {
+                // If manual entry is visible and has value, use that
+                wifiNetwork.name = '';
+                wifiSsidManual.name = 'wifi_ssid';
+            }
+        });
+        
+        // Audio output type selection
+        const audioTypeRadios = document.querySelectorAll('input[name="audio_type"]');
+        const i2sDacSelectionDiv = document.getElementById('i2sDacSelection');
+        const audioOutputFinal = document.getElementById('audio_output_final');
+        const audioOutputSelect = document.getElementById('audio_output');
+        
+        function updateAudioOutput() {
+            const selectedRadio = document.querySelector('input[name="audio_type"]:checked');
+            if (!selectedRadio) return;
+            
+            const selectedType = selectedRadio.value;
+            
+            if (selectedType === 'i2s') {
+                // Show I2S DAC selection dropdown
+                i2sDacSelectionDiv.style.display = 'block';
+                audioOutputSelect.required = true;
+                audioOutputFinal.value = audioOutputSelect.value || 'hifiberry-dac';
+            } else {
+                // Hide I2S DAC selection, use the selected type directly
+                i2sDacSelectionDiv.style.display = 'none';
+                audioOutputSelect.required = false;
+                audioOutputFinal.value = selectedType;
+            }
+        }
+        
+        audioTypeRadios.forEach(radio => {
+            radio.addEventListener('change', updateAudioOutput);
+        });
+        
+        // Update final value when I2S DAC dropdown changes
+        if (audioOutputSelect) {
+            audioOutputSelect.addEventListener('change', function() {
+                if (i2sDacSelectionDiv.style.display !== 'none') {
+                    audioOutputFinal.value = this.value;
+                }
+            });
+        }
+        
+        // Initialize on page load
+        updateAudioOutput();
+        
+        // Auto-scan on page load
+        window.addEventListener('load', function() {
+            if (!skipWifi.checked) {
+                scanForNetworks();
+            }
+        });
+    </script>
 </body>
 </html>
 

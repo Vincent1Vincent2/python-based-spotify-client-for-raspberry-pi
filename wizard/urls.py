@@ -4,5 +4,6 @@ from . import views
 urlpatterns = [
     path('', views.setup_view, name='setup'),
     path('done/', views.setup_done_view, name='done'),
+    path('scan-wifi/', views.scan_wifi_view, name='scan_wifi'),
 ]
 
