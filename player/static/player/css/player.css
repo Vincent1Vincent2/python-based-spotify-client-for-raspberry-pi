@@ -28,10 +28,15 @@ body {
     color: var(--color-text);
 }
 
-.logout-btn {
+.header-buttons {
     position: absolute;
     top: 0;
     right: 0;
+    display: flex;
+    gap: 10px;
+}
+
+.logout-btn, .settings-btn {
     background: var(--color-bg);
     border: var(--border-width) solid var(--color-border);
     color: var(--color-text);
@@ -45,7 +50,7 @@ body {
     display: inline-block;
 }
 
-.logout-btn:hover {
+.logout-btn:hover, .settings-btn:hover {
     background: var(--color-text);
     color: var(--color-bg);
 }
@@ -782,5 +787,138 @@ body {
 .device-select-btn:hover {
     background: var(--color-text);
     color: var(--color-bg);
+}
+
+/* Settings Page */
+.settings-section {
+    padding: 20px;
+}
+
+.audio-option {
+    margin: 15px 0;
+    padding: 15px;
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius);
+    background: var(--color-bg);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.audio-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--color-accent);
+}
+
+.audio-option input[type="radio"] {
+    margin-right: 10px;
+    cursor: pointer;
+}
+
+.audio-option-label {
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+}
+
+.audio-option-name {
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 5px;
+}
+
+.audio-option-description {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* Toast Notification */
+.toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--color-text);
+    color: var(--color-bg);
+    padding: 15px 20px;
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 10000;
+    font-weight: 500;
+    animation: slideIn 0.3s ease-out;
+    max-width: 400px;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.toast.fade-out {
+    animation: slideOut 0.3s ease-in forwards;
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* Settings Page */
+.settings-section {
+    margin-bottom: 30px;
+}
+
+.settings-section h2 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    border-bottom: var(--border-width) solid var(--color-border);
+    padding-bottom: 10px;
+}
+
+.audio-option {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    margin-bottom: 10px;
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.audio-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.audio-option input[type="radio"] {
+    margin-right: 15px;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.audio-option-label {
+    flex: 1;
+    cursor: pointer;
+}
+
+.audio-option-name {
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.audio-option-description {
+    font-size: 0.9rem;
+    opacity: 0.7;
 }
     

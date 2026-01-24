@@ -12,7 +12,10 @@
     <div class="container">
         <div class="header">
             <h1>Spotify Client</h1>
+            <div class="header-buttons">
+                <a href="{% url 'settings' %}" class="settings-btn">Settings</a>
             <a href="{% url 'logout' %}" class="logout-btn">Logout</a>
+            </div>
         </div>
         
         <div class="player-card">

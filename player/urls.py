@@ -25,5 +25,8 @@ urlpatterns = [
     path('play-album/', views.play_album, name='play_album'),
     path('saved-tracks/', views.saved_tracks, name='saved_tracks'),
     path('discover/', views.discover, name='discover'),
+    path('settings/', views.settings_view, name='settings'),
+    path('settings/audio/', views.update_audio_settings, name='update_audio_settings'),
+    path('settings/reboot/', views.reboot_system, name='reboot_system'),
 ]
 

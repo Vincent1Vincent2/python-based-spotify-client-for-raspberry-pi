@@ -76,7 +76,7 @@ def configure_wifi(ssid, password):
     password = password.strip() if password else ""
     
     # Skip configuration on non-Raspberry Pi systems (for development)
-    if not os.path.exists("/boot/config.txt") and not os.path.exists("/etc/wpa_supplicant"):
+    if not os.path.exists("/boot/firmware/config.txt") and not os.path.exists("/etc/wpa_supplicant"):
         return True, f"WiFi configured: {ssid} (config files not found, skipping - development mode)"
     
     try:

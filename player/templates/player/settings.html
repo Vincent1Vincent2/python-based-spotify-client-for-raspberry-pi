@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Spotify Client</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Settings</h1>
+            <div class="header-buttons">
+                <a href="{% url 'index' %}" class="settings-btn">Back</a>
+                <a href="{% url 'logout' %}" class="logout-btn">Logout</a>
+            </div>
+        </div>
+        
+        <div class="player-card">
+            <div class="settings-section">
+                <h2>Audio Output</h2>
+                <form id="audioSettingsForm">
+                    {% csrf_token %}
+                    {% for option in audio_options %}
+                    <div class="audio-option">
+                        <input type="radio" 
+                               id="audio_{{ option.value }}" 
+                               name="audio_output" 
+                               value="{{ option.value }}"
+                               {% if option.value == current_audio_output %}checked{% endif %}>
+                        <label for="audio_{{ option.value }}" class="audio-option-label">
+                            <div class="audio-option-name">{{ option.name }}</div>
+                            <div class="audio-option-description">{{ option.description }}</div>
+                        </label>
+                    </div>
+                    {% endfor %}
+                    <div style="margin-top: 20px; display: flex; gap: 10px;">
+                        <button type="submit" class="btn">Save Settings</button>
+                        <button type="button" id="rebootBtn" class="btn" style="background: #e74c3c;">Reboot System</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div id="toast" class="toast" style="display: none;"></div>
+    
+    <script>
+        const form = document.getElementById('audioSettingsForm');
+        let originalValue = document.querySelector('input[name="audio_output"]:checked').value;
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const selectedValue = document.querySelector('input[name="audio_output"]:checked').value;
+            
+            if (selectedValue === originalValue) {
+                showToast('No changes to save');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/settings/audio/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        audio_output: selectedValue
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('Settings saved! Reboot required for changes to take effect.');
+                    // Update original value so form knows it's saved
+                    originalValue = selectedValue;
+                } else {
+                    showToast('Error: ' + (data.error || 'Failed to save settings'));
+                }
+            } catch (error) {
+                showToast('Error: ' + error.message);
+            }
+        });
+        
+        // Reboot button handler
+        document.getElementById('rebootBtn').addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to reboot the system?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/settings/reboot/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('System rebooting...');
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                } else {
+                    showToast('Error: ' + (data.error || 'Failed to reboot'));
+                }
+            } catch (error) {
+                showToast('Error: ' + error.message);
+            }
+        });
+        
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.style.display = 'block';
+            
+            setTimeout(() => {
+                toast.classList.add('fade-out');
+                setTimeout(() => {
+                    toast.style.display = 'none';
+                    toast.classList.remove('fade-out');
+                }, 300);
+            }, 4000);
+        }
+        
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    </script>
+</body>
+</html>
+

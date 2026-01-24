@@ -627,6 +627,128 @@ def saved_tracks(request):
         return JsonResponse({'error': str(e)}, status=400)
 
 
+def settings_view(request):
+    """Settings page for audio configuration."""
+    from spotify_client.config import load_config
+    from wizard.audio_config import get_audio_options
+    
+    sp = get_spotify_client(request)
+    if not sp:
+        return redirect('login')
+    
+    # Get current audio output
+    config = load_config()
+    current_audio_output = config.get('audio', 'output', fallback='analog')
+    
+    # Get available audio options
+    audio_options = get_audio_options()
+    
+    return render(request, 'player/settings.html', {
+        'audio_options': audio_options,
+        'current_audio_output': current_audio_output
+    })
+
+
+@require_http_methods(["POST"])
+@csrf_exempt
+def update_audio_settings(request):
+    """Update audio output settings."""
+    import json
+    import subprocess
+    from pathlib import Path
+    from wizard.audio_config import configure_audio_output
+    
+    try:
+        data = json.loads(request.body)
+        audio_output = data.get('audio_output')
+        
+        if not audio_output:
+            return JsonResponse({'success': False, 'error': 'No audio output specified'}, status=400)
+        
+        # Configure /boot/firmware/config.txt
+        success, message = configure_audio_output(audio_output)
+        
+        if not success:
+            return JsonResponse({'success': False, 'error': message}, status=400)
+        
+        # Update .env file
+        env_path = Path('/opt/spotipi/.env')
+        if not env_path.exists():
+            env_path = Path(__file__).resolve().parent.parent.parent / '.env'
+        
+        # Always try to update .env
+        try:
+            # Read current .env
+            env_lines = []
+            audio_updated = False
+            
+            if env_path.exists():
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        if line.strip().startswith('AUDIO_OUTPUT=') or line.strip().startswith('I2S_AUDIO_OUTPUT='):
+                            if not audio_updated:
+                                env_lines.append(f'AUDIO_OUTPUT={audio_output}\n')
+                                audio_updated = True
+                        else:
+                            env_lines.append(line)
+            else:
+                # Create new .env file
+                env_lines = [f'AUDIO_OUTPUT={audio_output}\n']
+                audio_updated = True
+            
+            if not audio_updated:
+                env_lines.append(f'\nAUDIO_OUTPUT={audio_output}\n')
+            
+            # Write back using sudo if needed
+            env_content = ''.join(env_lines)
+            try:
+                with open(env_path, 'w', encoding='utf-8') as f:
+                    f.write(env_content)
+            except PermissionError:
+                result = subprocess.run(
+                    ['sudo', 'tee', str(env_path)],
+                    input=env_content.encode('utf-8'),
+                    capture_output=True,
+                    check=False
+                )
+                if result.returncode != 0:
+                    raise PermissionError(f"Could not write to {env_path}")
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': f'Error updating .env: {str(e)}'}, status=500)
+        
+        return JsonResponse({
+            'success': True,
+            'message': message
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@require_http_methods(["POST"])
+@csrf_exempt
+def reboot_system(request):
+    """Reboot the Raspberry Pi system."""
+    import subprocess
+    try:
+        # Reboot the system
+        result = subprocess.run(
+            ['sudo', 'reboot'],
+            capture_output=True,
+            check=False,
+            timeout=5
+        )
+        if result.returncode == 0:
+            return JsonResponse({'success': True, 'message': 'System rebooting...'})
+        else:
+            return JsonResponse({'success': False, 'error': 'Failed to reboot system'}, status=500)
+    except subprocess.TimeoutExpired:
+        # Reboot command doesn't return, so timeout is expected
+        return JsonResponse({'success': True, 'message': 'System rebooting...'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
 def discover(request):
     """Get random discover content - playlists, albums, and tracks."""
     sp = get_spotify_client(request)

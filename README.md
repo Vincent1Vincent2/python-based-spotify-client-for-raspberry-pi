@@ -10,12 +10,14 @@ A lightweight Django-based Spotify client designed to run on Raspberry Pi. Contr
   - IQaudio DAC+
   - JustBoom DAC
   - Allo Boss/Boss2 DAC
+  - Generic I2S DAC (PCM512x) - for X450 and similar boards
 - 📡 **WiFi Configuration**: Integrated WiFi setup wizard with network scanning
 - 🔧 **First-Boot Setup Wizard**: Complete configuration in one place
 - 🎨 **Modern Minimalist UI**: Clean, simple design
 - 🍓 **Lightweight**: Optimized for Raspberry Pi
 - 🖥️ **Web Playback SDK**: Play audio directly in browser or control other devices
 - 📱 **Multi-Device Support**: Switch between Web Player and other Spotify Connect devices
+- 🖥️ **Local Display Support**: Auto-launches in kiosk mode on boot - perfect for dedicated music players with screens
 
 ## Setup
 
@@ -36,7 +38,8 @@ A lightweight Django-based Spotify client designed to run on Raspberry Pi. Contr
    - Save configuration
 
 4. **Access the Client**
-   - Open browser and navigate to `http://<pi-ip-address>:8000`
+   - **Local Display**: The browser will automatically launch in kiosk mode on the Pi's screen
+   - **Network Access**: Open browser and navigate to `http://<pi-ip-address>:8000` from any device
    - Login with Spotify
    - Start controlling playback!
 
@@ -59,11 +62,13 @@ pip install -r requirements.txt
 
 #### 3. Configure Environment
 
-Copy `.env.example` to `.env` and fill in your credentials:
+Copy `env.example` to `.env` and fill in your credentials:
 
 ```bash
-cp .env.example .env
+cp env.example .env
 ```
+
+Or create `.env` manually with the following content:
 
 Generate a Django secret key (optional, can use the script):
 
@@ -73,13 +78,25 @@ python generate_secret_key.py
 
 Edit `.env` with your credentials:
 
-```
+```env
 SECRET_KEY=your-generated-secret-key-here
 DEBUG=True
 SPOTIFY_CLIENT_ID=your-client-id-here
 SPOTIFY_CLIENT_SECRET=your-client-secret-here
 SPOTIFY_REDIRECT_URI=http://<your-pi-ip>:8000/callback
+
+# Audio Output Configuration
+# Options: analog, hdmi, hifiberry-dac, hifiberry-dacplus, hifiberry-dacplusadc,
+#          iqaudio-dacplus, justboom-dac, allo-boss-dac, allo-boss2-dac, x450
+AUDIO_OUTPUT=analog
+
+# Alternative: Use I2S_AUDIO_OUTPUT for I2S DACs (takes precedence over AUDIO_OUTPUT)
+# I2S_AUDIO_OUTPUT=x450
 ```
+
+See `env.example` for a complete template with all available options.
+
+**Note:** If the `.env` file is missing or incomplete, the application will automatically redirect to the setup wizard on first access.
 
 For production (Raspberry Pi OS image), configuration is stored in `/etc/spotipi/spotipi.conf` and managed through the setup wizard.
 
@@ -127,11 +144,16 @@ sudo systemctl start spotipi.service
 
 #### 6. Access the Client
 
-Open your browser and go to:
-- Local: `http://127.0.0.1:8000`
-- From another device: `http://<pi-ip-address>:8000`
+**Local Display (Auto-Launch):**
+- On boot, the browser automatically launches in kiosk mode on the Pi's screen
+- Perfect for dedicated music players with their own display
+- See `LOCAL_DISPLAY_SETUP.md` for details
 
-Click "Login" to authenticate with Spotify.
+**Network Access:**
+- Open browser and go to:
+  - Local: `http://127.0.0.1:8000`
+  - From another device: `http://<pi-ip-address>:8000`
+- Click "Login" to authenticate with Spotify
 
 ## Setup Wizard
 
@@ -223,16 +245,21 @@ spotipy/
 
 To create a custom Raspberry Pi OS image with SpotiPi pre-installed:
 
-1. **Start with Raspberry Pi OS Lite** (64-bit recommended)
-2. **Install dependencies** (see Setup section)
-3. **Copy application** to `/opt/spotipi`
-4. **Set up systemd service** (see Production section)
-5. **Test everything** works correctly
-6. **Clean up system** (clear logs, temp files, etc.)
-7. **Create disk image** using Raspberry Pi Imager or `dd`
-8. **Test the image** on a fresh SD card
+**Quick Answer:** Yes, you need to install regular Raspberry Pi OS first, then install the app, and finally create an image from that SD card.
 
-See documentation for detailed image creation process.
+**Detailed Process:**
+
+1. **Flash Raspberry Pi OS Lite** (64-bit recommended) to an SD card
+2. **Boot the Raspberry Pi** and SSH into it
+3. **Transfer the SpotiPi code** to the Pi (via git, scp, or USB)
+4. **Run the installation script**: `sudo ./install.sh`
+5. **Test everything** works correctly
+6. **Run the cleanup script**: `sudo ./prepare_image.sh`
+7. **Shutdown the Pi**: `sudo shutdown -h now`
+8. **Create disk image** using `dd` (Linux/Mac) or Raspberry Pi Imager (Windows)
+9. **Test the image** on a fresh SD card
+
+**See `IMAGE_CREATION.md` for complete step-by-step instructions with all commands.**
 
 ## Development
 
@@ -268,6 +295,10 @@ python manage.py runserver 0.0.0.0:8000
 - `SPOTIFY_CLIENT_ID`: Spotify API Client ID
 - `SPOTIFY_CLIENT_SECRET`: Spotify API Client Secret
 - `SPOTIFY_REDIRECT_URI`: OAuth redirect URI
+- `AUDIO_OUTPUT`: Audio output type (analog, hdmi, or I2S DAC option)
+- `I2S_AUDIO_OUTPUT`: Alternative env var for I2S DAC configuration (takes precedence over AUDIO_OUTPUT)
+
+**Note:** If configuration is missing or incomplete, the app will automatically redirect to the setup wizard on first access.
 
 ## License
 
