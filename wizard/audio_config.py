@@ -7,6 +7,10 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 BOOT_CONFIG_PATH = "/boot/firmware/config.txt"
 BOOT_CONFIG_BACKUP = "/boot/firmware/config.txt.spotipi.backup"
@@ -144,9 +148,26 @@ def remove_i2s_overlays(lines):
     
     return new_lines
 
+def _parse_bool_env(env_var, default=False):
+    """Parse boolean environment variable (accepts true/false, on/off, 1/0)."""
+    value = os.getenv(env_var, '').lower().strip()
+    if value in ('true', 'on', '1', 'yes'):
+        return True
+    elif value in ('false', 'off', '0', 'no', ''):
+        return False
+    return default
+
 def configure_audio_output(audio_option):
     """
     Configure Raspberry Pi audio output by modifying /boot/firmware/config.txt.
+    Reads environment variables from .env file and applies them to config.txt.
+    
+    Environment variables (from .env):
+    - I2C_ARM_ENABLED: Enable/disable i2c_arm (true/false, on/off)
+    - I2S_ENABLED: Enable/disable i2s (true/false, on/off)
+    - SPI_ENABLED: Enable/disable spi (true/false, on/off)
+    - AUDIO_ENABLED: Enable/disable onboard audio (true/false, on/off)
+    - DTOVERLAY: Device tree overlay for I2S DAC (e.g., hifiberry-dac)
     
     Args:
         audio_option: Key from AUDIO_OPTIONS (e.g., 'hifiberry-dac', 'analog', etc.)
@@ -169,100 +190,138 @@ def configure_audio_output(audio_option):
         config_content = read_config()
         lines = config_content.split('\n')
         
-        # Remove all I2S overlays
+        # Remove all I2S overlays first (we'll add the correct one later)
         lines = remove_i2s_overlays(lines)
         
         # Get the selected audio option configuration
         audio_config = AUDIO_OPTIONS[audio_option]
-        dtoverlay = audio_config.get("dtoverlay")
+        dtoverlay_from_option = audio_config.get("dtoverlay")
         
-        # Enable hardware interfaces (i2c_arm, i2s, spi) - uncomment if commented
+        # Read environment variables (with fallback to audio_option if not set)
+        i2c_enabled = _parse_bool_env("I2C_ARM_ENABLED", default=True)
+        i2s_enabled = _parse_bool_env("I2S_ENABLED", default=True)
+        spi_enabled = _parse_bool_env("SPI_ENABLED", default=True)
+        
+        # DTOVERLAY from env takes precedence, otherwise use audio_option
+        dtoverlay_from_env = os.getenv("DTOVERLAY", "").strip()
+        if dtoverlay_from_env:
+            dtoverlay = dtoverlay_from_env
+        else:
+            dtoverlay = dtoverlay_from_option
+        
+        # AUDIO_ENABLED from env, but override logic: if I2S DAC is selected, disable onboard audio
+        audio_enabled_env = _parse_bool_env("AUDIO_ENABLED", default=None)
+        if dtoverlay:
+            # I2S DAC selected: disable onboard audio (unless explicitly enabled in env)
+            audio_enabled = audio_enabled_env if audio_enabled_env is not None else False
+        elif audio_option == "analog":
+            # Analog selected: enable onboard audio (unless explicitly disabled in env)
+            audio_enabled = audio_enabled_env if audio_enabled_env is not None else True
+        else:
+            # HDMI or other: use env value or default to False
+            audio_enabled = audio_enabled_env if audio_enabled_env is not None else False
+        
+        # Process hardware interface parameters (i2c_arm, i2s, spi)
         new_lines = []
+        has_i2c = False
+        has_i2s = False
+        has_spi = False
+        
         for line in lines:
-            # Check for hardware interface parameters
-            if re.match(r"#\s*dtparam\s*=\s*(i2c_arm|i2s|spi)\s*=\s*on", line.strip(), re.IGNORECASE):
-                # Uncomment the line
-                new_lines.append(re.sub(r"^#\s*", "", line))
-            elif re.match(r"dtparam\s*=\s*(i2c_arm|i2s|spi)\s*=\s*on", line.strip(), re.IGNORECASE):
-                # Already uncommented, keep as is
-                new_lines.append(line)
-            else:
-                new_lines.append(line)
-        lines = new_lines
-        
-        # Ensure hardware interfaces are present (add if missing)
-        has_i2c = any(re.match(r"dtparam\s*=\s*i2c_arm\s*=\s*on", line.strip(), re.IGNORECASE) for line in lines)
-        has_i2s = any(re.match(r"dtparam\s*=\s*i2s\s*=\s*on", line.strip(), re.IGNORECASE) for line in lines)
-        has_spi = any(re.match(r"dtparam\s*=\s*spi\s*=\s*on", line.strip(), re.IGNORECASE) for line in lines)
-        
-        # Find insertion point (after comments, before other dtparam entries)
-        insert_idx = len(lines)
-        for i, line in enumerate(lines):
-            if re.match(r"dtparam\s*=", line.strip(), re.IGNORECASE) and not line.strip().startswith('#'):
-                insert_idx = i
-                break
-        
-        # Insert missing hardware interface parameters
-        if not has_i2c:
-            lines.insert(insert_idx, "dtparam=i2c_arm=on")
-            insert_idx += 1
-        if not has_i2s:
-            lines.insert(insert_idx, "dtparam=i2s=on")
-            insert_idx += 1
-        if not has_spi:
-            lines.insert(insert_idx, "dtparam=spi=on")
-        
-        # Handle audio parameter based on selection
-        new_lines = []
-        audio_param_found = False
-        for line in lines:
-            # Check for dtparam=audio=on or dtparam=audio=off
-            if re.match(r"#?\s*dtparam\s*=\s*audio\s*=", line.strip(), re.IGNORECASE):
-                audio_param_found = True
-                if dtoverlay:
-                    # I2S DAC selected: comment out onboard audio
+            # Check for i2c_arm
+            if re.match(r"#?\s*dtparam\s*=\s*i2c_arm\s*=", line.strip(), re.IGNORECASE):
+                has_i2c = True
+                if i2c_enabled:
+                    # Enable: uncomment and set to on
+                    new_lines.append("dtparam=i2c_arm=on")
+                else:
+                    # Disable: comment out
                     if not line.strip().startswith('#'):
                         new_lines.append('#' + line.lstrip())
                     else:
                         new_lines.append(line)
-                elif audio_option == "analog":
-                    # Analog selected: uncomment onboard audio
-                    if line.strip().startswith('#'):
-                        new_lines.append(re.sub(r"^#\s*", "", line))
+            # Check for i2s
+            elif re.match(r"#?\s*dtparam\s*=\s*i2s\s*=", line.strip(), re.IGNORECASE):
+                has_i2s = True
+                if i2s_enabled:
+                    # Enable: uncomment and set to on
+                    new_lines.append("dtparam=i2s=on")
+                else:
+                    # Disable: comment out
+                    if not line.strip().startswith('#'):
+                        new_lines.append('#' + line.lstrip())
                     else:
                         new_lines.append(line)
+            # Check for spi
+            elif re.match(r"#?\s*dtparam\s*=\s*spi\s*=", line.strip(), re.IGNORECASE):
+                has_spi = True
+                if spi_enabled:
+                    # Enable: uncomment and set to on
+                    new_lines.append("dtparam=spi=on")
                 else:
-                    # HDMI or other: keep as is
-                    new_lines.append(line)
+                    # Disable: comment out
+                    if not line.strip().startswith('#'):
+                        new_lines.append('#' + line.lstrip())
+                    else:
+                        new_lines.append(line)
+            # Check for audio parameter
+            elif re.match(r"#?\s*dtparam\s*=\s*audio\s*=", line.strip(), re.IGNORECASE):
+                if audio_enabled:
+                    # Enable: uncomment and set to on
+                    new_lines.append("dtparam=audio=on")
+                else:
+                    # Disable: comment out
+                    if not line.strip().startswith('#'):
+                        new_lines.append('#' + line.lstrip())
+                    else:
+                        new_lines.append(line)
             else:
                 new_lines.append(line)
         
+        # Find insertion point for missing parameters (after comments, before other dtparam entries)
+        insert_idx = len(new_lines)
+        for i, line in enumerate(new_lines):
+            if re.match(r"dtparam\s*=", line.strip(), re.IGNORECASE) and not line.strip().startswith('#'):
+                insert_idx = i
+                break
+        
+        # Add missing hardware interface parameters
+        if not has_i2c and i2c_enabled:
+            new_lines.insert(insert_idx, "dtparam=i2c_arm=on")
+            insert_idx += 1
+        if not has_i2s and i2s_enabled:
+            new_lines.insert(insert_idx, "dtparam=i2s=on")
+            insert_idx += 1
+        if not has_spi and spi_enabled:
+            new_lines.insert(insert_idx, "dtparam=spi=on")
+            insert_idx += 1
+        
+        # Add audio parameter if needed
+        audio_param_exists = any(re.match(r"#?\s*dtparam\s*=\s*audio\s*=", line.strip(), re.IGNORECASE) for line in new_lines)
+        if not audio_param_exists:
+            if audio_enabled:
+                # Find insertion point after hardware interfaces
+                insert_idx = len(new_lines)
+                for i, line in enumerate(new_lines):
+                    if re.match(r"dtparam\s*=\s*spi\s*=\s*on", line.strip(), re.IGNORECASE):
+                        insert_idx = i + 1
+                        break
+                new_lines.insert(insert_idx, "dtparam=audio=on")
+        
         lines = new_lines
         
-        # If audio parameter not found and analog is selected, add it
-        if not audio_param_found and audio_option == "analog":
-            # Find insertion point after hardware interfaces
-            insert_idx = len(lines)
-            for i, line in enumerate(lines):
-                if re.match(r"dtparam\s*=\s*spi\s*=\s*on", line.strip(), re.IGNORECASE):
-                    insert_idx = i + 1
-                    break
-            lines.insert(insert_idx, "dtparam=audio=on")
-        
-        # Handle I2S overlay
+        # Handle dtoverlay (I2S DAC)
         if dtoverlay:
-            # Remove any existing dtoverlay for this DAC first
-            lines = [line for line in lines if not re.match(rf"dtoverlay\s*=\s*{re.escape(dtoverlay)}", line.strip(), re.IGNORECASE)]
+            # Remove any existing dtoverlay entries first
+            lines = [line for line in lines if not re.match(r"dtoverlay\s*=", line.strip(), re.IGNORECASE)]
             
             # Add dtoverlay at the END of the file (after removing trailing empty lines)
             while lines and lines[-1].strip() == '':
                 lines.pop()
             lines.append(f"dtoverlay={dtoverlay}")
-        
-        # Handle HDMI audio (disable analog)
-        if audio_option == "hdmi":
-            # Remove dtparam=audio=on if present
-            lines = [line for line in lines if not re.match(r"dtparam\s*=\s*audio\s*=", line.strip(), re.IGNORECASE)]
+        else:
+            # Remove any dtoverlay entries if no I2S DAC is selected
+            lines = [line for line in lines if not re.match(r"dtoverlay\s*=", line.strip(), re.IGNORECASE)]
         
         # Write modified config
         new_content = '\n'.join(lines)

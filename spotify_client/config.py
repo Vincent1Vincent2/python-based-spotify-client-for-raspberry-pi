@@ -1,6 +1,8 @@
 import os
 import stat
+import subprocess
 from configparser import ConfigParser
+from pathlib import Path
 from dotenv import load_dotenv
 
 CONFIG_PATH = "/etc/spotipi/spotipi.conf"
@@ -18,6 +20,12 @@ def load_config():
     # Production: read from /etc/spotipi/spotipi.conf
     if os.path.exists(CONFIG_PATH):
         config.read(CONFIG_PATH)
+        # Audio is NOT stored in config file - it's in /boot/firmware/config.txt and .env
+        # Add audio section from .env for compatibility
+        audio_output = os.getenv("I2S_AUDIO_OUTPUT") or os.getenv("AUDIO_OUTPUT", "analog")
+        if not config.has_section("audio"):
+            config.add_section("audio")
+        config.set("audio", "output", audio_output)
         return config
     
     # Development: fallback to .env
@@ -31,9 +39,11 @@ def load_config():
     config.add_section("django")
     config.set("django", "secret_key", os.getenv("SECRET_KEY", ""))
     
-    # Create audio section
+    # Create audio section - ONLY from .env (not from config file)
+    # I2S_AUDIO_OUTPUT takes precedence over AUDIO_OUTPUT (as per README)
+    audio_output = os.getenv("I2S_AUDIO_OUTPUT") or os.getenv("AUDIO_OUTPUT", "analog")
     config.add_section("audio")
-    config.set("audio", "output", os.getenv("AUDIO_OUTPUT", "analog"))
+    config.set("audio", "output", audio_output)
     
     return config
 
@@ -64,10 +74,13 @@ def generate_secret_key():
         import secrets
         return secrets.token_urlsafe(50)
 
-def save_config(client_id, client_secret, redirect_uri, secret_key=None, audio_output="analog"):
+def save_config(client_id, client_secret, redirect_uri, secret_key=None):
     """
     Save configuration to /etc/spotipi/spotipi.conf.
     Creates directory if needed and sets secure file permissions (600).
+    
+    Note: Audio configuration is NOT saved here - it's stored in /boot/firmware/config.txt
+    and should be reflected in the .env file. Use update_env_audio_output() to update .env.
     
     If secret_key is not provided, a new one will be generated automatically.
     
@@ -89,9 +102,8 @@ def save_config(client_id, client_secret, redirect_uri, secret_key=None, audio_o
         "secret_key": secret_key,
     }
     
-    config["audio"] = {
-        "output": audio_output,
-    }
+    # Note: Audio configuration is NOT saved to this config file
+    # It's stored in /boot/firmware/config.txt and .env file
     
     # Create directory if it doesn't exist
     os.makedirs("/etc/spotipi", exist_ok=True)
@@ -102,4 +114,78 @@ def save_config(client_id, client_secret, redirect_uri, secret_key=None, audio_o
     
     # Set secure permissions (owner read/write only)
     os.chmod(CONFIG_PATH, stat.S_IRUSR | stat.S_IWUSR)
+
+def update_env_audio_output(audio_output):
+    """
+    Update the .env file with the audio output setting.
+    Preserves all other .env values.
+    
+    Args:
+        audio_output: Audio output value (e.g., 'analog', 'x450', 'hifiberry-dac', etc.)
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    # Find .env file path
+    env_path = Path('/opt/spotipi/.env')
+    if not env_path.exists():
+        env_path = Path(__file__).resolve().parent.parent / '.env'
+    
+    try:
+        # Read current .env (preserving all pre-configured values)
+        env_lines = []
+        audio_updated = False
+        env_content_read = None
+        
+        if env_path.exists():
+            try:
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    env_content_read = f.read()
+            except PermissionError:
+                # Try with sudo
+                try:
+                    result = subprocess.run(
+                        ['sudo', 'cat', str(env_path)],
+                        capture_output=True,
+                        check=True,
+                        text=True
+                    )
+                    env_content_read = result.stdout
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    return False, f"Could not read {env_path}"
+            
+            # Process each line, preserving all except AUDIO_OUTPUT/I2S_AUDIO_OUTPUT
+            for line in env_content_read.splitlines(keepends=True):
+                if line.strip().startswith('AUDIO_OUTPUT=') or line.strip().startswith('I2S_AUDIO_OUTPUT='):
+                    if not audio_updated:
+                        env_lines.append(f'AUDIO_OUTPUT={audio_output}\n')
+                        audio_updated = True
+                else:
+                    env_lines.append(line)
+        else:
+            # Create new .env file
+            env_lines = [f'AUDIO_OUTPUT={audio_output}\n']
+            audio_updated = True
+        
+        if not audio_updated:
+            env_lines.append(f'\nAUDIO_OUTPUT={audio_output}\n')
+        
+        # Write back using sudo if needed
+        env_content = ''.join(env_lines)
+        try:
+            with open(env_path, 'w', encoding='utf-8') as f:
+                f.write(env_content)
+        except PermissionError:
+            result = subprocess.run(
+                ['sudo', 'tee', str(env_path)],
+                input=env_content.encode('utf-8'),
+                capture_output=True,
+                check=False
+            )
+            if result.returncode != 0:
+                return False, f"Could not write to {env_path}"
+        
+        return True, f"Updated .env with AUDIO_OUTPUT={audio_output}"
+    except Exception as e:
+        return False, f"Error updating .env: {str(e)}"
 

@@ -654,9 +654,8 @@ def settings_view(request):
 def update_audio_settings(request):
     """Update audio output settings."""
     import json
-    import subprocess
-    from pathlib import Path
     from wizard.audio_config import configure_audio_output
+    from spotify_client.config import update_env_audio_output
     
     try:
         data = json.loads(request.body)
@@ -671,50 +670,11 @@ def update_audio_settings(request):
         if not success:
             return JsonResponse({'success': False, 'error': message}, status=400)
         
-        # Update .env file
-        env_path = Path('/opt/spotipi/.env')
-        if not env_path.exists():
-            env_path = Path(__file__).resolve().parent.parent.parent / '.env'
+        # Update .env file to reflect the audio configuration
+        env_success, env_message = update_env_audio_output(audio_output)
         
-        # Always try to update .env
-        try:
-            # Read current .env
-            env_lines = []
-            audio_updated = False
-            
-            if env_path.exists():
-                with open(env_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        if line.strip().startswith('AUDIO_OUTPUT=') or line.strip().startswith('I2S_AUDIO_OUTPUT='):
-                            if not audio_updated:
-                                env_lines.append(f'AUDIO_OUTPUT={audio_output}\n')
-                                audio_updated = True
-                        else:
-                            env_lines.append(line)
-            else:
-                # Create new .env file
-                env_lines = [f'AUDIO_OUTPUT={audio_output}\n']
-                audio_updated = True
-            
-            if not audio_updated:
-                env_lines.append(f'\nAUDIO_OUTPUT={audio_output}\n')
-            
-            # Write back using sudo if needed
-            env_content = ''.join(env_lines)
-            try:
-                with open(env_path, 'w', encoding='utf-8') as f:
-                    f.write(env_content)
-            except PermissionError:
-                result = subprocess.run(
-                    ['sudo', 'tee', str(env_path)],
-                    input=env_content.encode('utf-8'),
-                    capture_output=True,
-                    check=False
-                )
-                if result.returncode != 0:
-                    raise PermissionError(f"Could not write to {env_path}")
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': f'Error updating .env: {str(e)}'}, status=500)
+        if not env_success:
+            return JsonResponse({'success': False, 'error': f'Error updating .env: {env_message}'}, status=500)
         
         return JsonResponse({
             'success': True,
