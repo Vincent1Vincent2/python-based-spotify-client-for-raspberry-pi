@@ -138,7 +138,7 @@
             </div>
             
             <div class="playlist-detail-view" id="playlistDetailView">
-                <button class="back-button" onclick="backToPlaylists()">← Back to Playlists</button>
+                <button class="back-button" id="detailBackButton" onclick="backFromDetail()">← Back to Playlists</button>
                 <div class="playlist-detail-header" id="playlistDetailHeader"></div>
                 <div class="playlist-detail-actions" id="playlistDetailActions"></div>
                 <div class="tracks-list" id="tracksList"></div>
@@ -156,6 +156,7 @@
         let currentTrack = null;
         let isPlaying = false;
         let useWebPlayer = {% if use_web_player %}true{% else %}false{% endif %};
+        let detailViewSource = null; // 'playlists' | 'albums' | 'discover' - where we opened the detail view from
         
         window.onSpotifyWebPlaybackSDKReady = () => {
             // Always initialize the web player to get device ID, even if not currently selected
@@ -498,50 +499,92 @@
                 });
         }
         
-        function playTrack(trackId) {
-            if (useWebPlayer && player && deviceId) {
-                if (!accessToken) {
-                    document.getElementById('statusIndicator').textContent = 'Player not ready';
-                    return;
-                }
-                
-                fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        uris: [`spotify:track:${trackId}`]
-                    })
-                })
-                .then(response => {
-                    if (response.ok) {
-                        document.getElementById('statusIndicator').textContent = 'Playing track...';
+        function playTrack(trackId, playlistId) {
+            // playlistId optional: when set, play from that playlist starting at this track (rest of playlist continues)
+            const params = new URLSearchParams({ id: trackId });
+            if (playlistId) params.set('playlist_id', playlistId);
+            if (useWebPlayer && deviceId) params.set('device_id', deviceId);
+            const url = '/play-track/?' + params.toString();
+            fetch(url, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'playing') {
+                        document.getElementById('statusIndicator').textContent = 'Playing...';
                         setTimeout(() => {
                             document.getElementById('statusIndicator').textContent = '';
                         }, 2000);
-                    } else {
-                        document.getElementById('statusIndicator').textContent = 'Error playing track';
+                        if (typeof checkCurrentPlayback === 'function') {
+                            checkCurrentPlayback();
+                        }
+                    } else if (data.error) {
+                        document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
                     }
                 })
                 .catch(error => {
                     document.getElementById('statusIndicator').textContent = 'Error: ' + error;
                 });
-            } else {
-                // For external devices, add to queue
-                fetch(`/queue/?id=${trackId}`, { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'queued') {
-                            document.getElementById('statusIndicator').textContent = 'Track added to queue!';
-                            setTimeout(() => {
-                                document.getElementById('statusIndicator').textContent = '';
-                            }, 2000);
-                        }
-                    });
-            }
         }
+        
+        function addToQueue(trackId) {
+            fetch(`/queue/?id=${encodeURIComponent(trackId)}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'queued') {
+                        document.getElementById('statusIndicator').textContent = 'Added to queue';
+                        setTimeout(() => { document.getElementById('statusIndicator').textContent = ''; }, 2000);
+                    } else if (data.error) {
+                        document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
+                    }
+                })
+                .catch(error => { document.getElementById('statusIndicator').textContent = 'Error: ' + error; });
+        }
+        
+        (function initSwipeToQueue() {
+            const SWIPE_THRESHOLD = 55;
+            const MAX_DRAG = 80;
+            let swipeState = null;
+            let preventClickRow = null;
+            function onDown(e) {
+                const row = e.target.closest && e.target.closest('.track-row-swipe');
+                if (!row) return;
+                const trackId = row.getAttribute('data-track-id');
+                if (!trackId) return;
+                const content = row.querySelector('.track-row-content');
+                if (!content) return;
+                row.classList.add('dragging');
+                swipeState = { row, content, trackId, startX: e.clientX, pointerId: e.pointerId };
+            }
+            function onMove(e) {
+                if (!swipeState || e.pointerId !== swipeState.pointerId) return;
+                e.preventDefault();
+                const dx = Math.min(0, e.clientX - swipeState.startX);
+                swipeState.content.style.transform = `translateX(${Math.max(dx, -MAX_DRAG)}px)`;
+            }
+            function onUp(e) {
+                if (!swipeState || e.pointerId !== swipeState.pointerId) return;
+                const content = swipeState.content;
+                const tx = parseFloat((content.style.transform || '').replace(/translateX\((-?[\d.]+)px\)/, '$1')) || 0;
+                swipeState.row.classList.remove('dragging');
+                if (tx <= -SWIPE_THRESHOLD) {
+                    addToQueue(swipeState.trackId);
+                    preventClickRow = swipeState.row;
+                    setTimeout(function() { preventClickRow = null; }, 300);
+                }
+                content.style.transform = '';
+                content.style.transition = 'transform 0.15s ease-out';
+                swipeState = null;
+            }
+            document.addEventListener('pointerdown', onDown, { passive: true });
+            document.addEventListener('pointermove', onMove, { passive: false });
+            document.addEventListener('pointerup', onUp, { passive: true });
+            document.addEventListener('pointercancel', onUp, { passive: true });
+            document.addEventListener('click', function(e) {
+                if (preventClickRow && preventClickRow.contains(e.target)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            }, true);
+        })();
         
         function selectWebPlayer() {
             // Make sure we have the web player device ID before transferring
@@ -670,9 +713,22 @@
                 return;
             }
             
-            playlistsSection.style.display = 'none';
+            const activeTab = document.querySelector('.tab-button.active');
+            const fromDiscover = activeTab && activeTab.id === 'tab-discover';
+            const discoverSection = document.getElementById('discoverSection');
+            if (fromDiscover && discoverSection) {
+                discoverSection.style.display = 'none';
+                detailViewSource = 'discover';
+                const backBtn = document.getElementById('detailBackButton');
+                if (backBtn) backBtn.textContent = '← Back to Discover';
+            } else {
+                playlistsSection.style.display = 'none';
+                detailViewSource = 'playlists';
+                const backBtn = document.getElementById('detailBackButton');
+                if (backBtn) backBtn.textContent = '← Back to Playlists';
+            }
             playlistDetailView.style.display = 'block';
-            
+
             // Load playlist details
             fetch(`/playlist-detail/?id=${playlistId}`)
                 .then(response => response.json())
@@ -709,15 +765,19 @@
                             const minutes = Math.floor(duration / 60);
                             const seconds = duration % 60;
                             const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                            
                             return `
-                                <div class="track-item" onclick="playTrack('${track.id}')">
-                                    <img src="${track.image || 'https://via.placeholder.com/50?text=No+Image'}" alt="${track.name}" class="track-image">
-                                    <div class="track-info">
-                                        <div class="track-name">${track.name}</div>
-                                        <div class="track-artist">${track.artists.join(', ')}</div>
+                                <div class="track-row-swipe" data-track-id="${track.id}" data-playlist-id="${data.id}">
+                                    <div class="track-row-action">+ Queue</div>
+                                    <div class="track-row-content">
+                                        <div class="track-item" onclick="playTrack('${track.id}', '${data.id}')">
+                                            <img src="${track.image || 'https://via.placeholder.com/50?text=No+Image'}" alt="${track.name}" class="track-image">
+                                            <div class="track-info">
+                                                <div class="track-name">${track.name}</div>
+                                                <div class="track-artist">${track.artists.join(', ')}</div>
+                                            </div>
+                                            <div class="track-duration">${durationStr}</div>
+                                        </div>
                                     </div>
-                                    <div class="track-duration">${durationStr}</div>
                                 </div>
                             `;
                         }).join('');
@@ -728,7 +788,7 @@
                 });
         }
         
-        function backToPlaylists() {
+        function backFromDetail() {
             const playlistsSection = document.getElementById('playlistsSection');
             const albumsSection = document.getElementById('albumsSection');
             const playlistDetailView = document.getElementById('playlistDetailView');
@@ -740,13 +800,16 @@
             
             playlistDetailView.style.display = 'none';
             
-            // Show the appropriate section based on which tab is active
-            const activeTab = document.querySelector('.tab-button.active');
-            if (activeTab && activeTab.id === 'tab-playlists' && playlistsSection) {
-                playlistsSection.style.display = 'block';
-            } else if (activeTab && activeTab.id === 'tab-albums' && albumsSection) {
-                albumsSection.style.display = 'block';
+            // Show the section we came from (playlists, albums, or discover)
+            if (detailViewSource === 'playlists' && playlistsSection) {
+                playlistsSection.style.removeProperty('display');
+            } else if (detailViewSource === 'albums' && albumsSection) {
+                albumsSection.style.removeProperty('display');
+            } else if (detailViewSource === 'discover') {
+                const discoverSection = document.getElementById('discoverSection');
+                if (discoverSection) discoverSection.style.removeProperty('display');
             }
+            detailViewSource = null;
         }
         
         let allAlbums = [];
@@ -815,9 +878,22 @@
                 return;
             }
             
-            albumsSection.style.display = 'none';
+            const activeTab = document.querySelector('.tab-button.active');
+            const fromDiscover = activeTab && activeTab.id === 'tab-discover';
+            const discoverSection = document.getElementById('discoverSection');
+            if (fromDiscover && discoverSection) {
+                discoverSection.style.display = 'none';
+                detailViewSource = 'discover';
+                const backBtn = document.getElementById('detailBackButton');
+                if (backBtn) backBtn.textContent = '← Back to Discover';
+            } else {
+                albumsSection.style.display = 'none';
+                detailViewSource = 'albums';
+                const backBtn = document.getElementById('detailBackButton');
+                if (backBtn) backBtn.textContent = '← Back to Albums';
+            }
             playlistDetailView.style.display = 'block';
-            
+
             // Load album details
             fetch(`/album-detail/?id=${albumId}`)
                 .then(response => response.json())
@@ -854,15 +930,19 @@
                             const minutes = Math.floor(duration / 60);
                             const seconds = duration % 60;
                             const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                            
                             return `
-                                <div class="track-item" onclick="playTrack('${track.id}')">
-                                    <img src="${track.image || 'https://via.placeholder.com/50?text=No+Image'}" alt="${track.name}" class="track-image">
-                                    <div class="track-info">
-                                        <div class="track-name">${track.name}</div>
-                                        <div class="track-artist">${track.artists.join(', ')}</div>
+                                <div class="track-row-swipe" data-track-id="${track.id}">
+                                    <div class="track-row-action">+ Queue</div>
+                                    <div class="track-row-content">
+                                        <div class="track-item" onclick="playTrack('${track.id}')">
+                                            <img src="${track.image || 'https://via.placeholder.com/50?text=No+Image'}" alt="${track.name}" class="track-image">
+                                            <div class="track-info">
+                                                <div class="track-name">${track.name}</div>
+                                                <div class="track-artist">${track.artists.join(', ')}</div>
+                                            </div>
+                                            <div class="track-duration">${durationStr}</div>
+                                        </div>
                                     </div>
-                                    <div class="track-duration">${durationStr}</div>
                                 </div>
                             `;
                         }).join('');
@@ -950,46 +1030,57 @@
                 const minutes = Math.floor(duration / 60);
                 const seconds = duration % 60;
                 const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                
                 return `
-                    <div class="track-item" onclick="playTrack('${track.id}')">
-                        <img src="${track.image || 'https://via.placeholder.com/50?text=No+Image'}" alt="${track.name}" class="track-image">
-                        <div class="track-info">
-                            <div class="track-name">${track.name}</div>
-                            <div class="track-artist">${track.artists.join(', ')} • ${track.album}</div>
+                    <div class="track-row-swipe" data-track-id="${track.id}">
+                        <div class="track-row-action">+ Queue</div>
+                        <div class="track-row-content">
+                            <div class="track-item" onclick="playTrack('${track.id}')">
+                                <img src="${track.image || 'https://via.placeholder.com/50?text=No+Image'}" alt="${track.name}" class="track-image">
+                                <div class="track-info">
+                                    <div class="track-name">${track.name}</div>
+                                    <div class="track-artist">${track.artists.join(', ')} • ${track.album}</div>
+                                </div>
+                                <div class="track-duration">${durationStr}</div>
+                            </div>
                         </div>
-                        <div class="track-duration">${durationStr}</div>
                     </div>
                 `;
             }).join('');
         }
         
         function switchTab(tabName) {
-            // Hide all tab contents
+            // 1) Close detail view and restore list sections so tab content shows inside the tab area
+            const playlistDetailView = document.getElementById('playlistDetailView');
+            const playlistsSection = document.getElementById('playlistsSection');
+            const albumsSection = document.getElementById('albumsSection');
+            const discoverSection = document.getElementById('discoverSection');
+            if (playlistDetailView) playlistDetailView.style.display = 'none';
+            // Remove inline display so sections use their normal visibility (controlled by tab)
+            if (playlistsSection) playlistsSection.style.removeProperty('display');
+            if (albumsSection) albumsSection.style.removeProperty('display');
+            if (discoverSection) discoverSection.style.removeProperty('display');
+
+            // 2) Switch tab panel and button
             document.querySelectorAll('.tab-content').forEach(content => {
                 content.classList.remove('active');
             });
-            
-            // Remove active class from all tab buttons
             document.querySelectorAll('.tab-button').forEach(btn => {
                 btn.classList.remove('active');
             });
-            
-            // Show selected tab content
-            document.getElementById(`content-${tabName}`).classList.add('active');
-            
-            // Add active class to clicked tab button
-            document.getElementById(`tab-${tabName}`).classList.add('active');
-            
-            // Load content for the tab if needed
+            const contentEl = document.getElementById(`content-${tabName}`);
+            const tabBtn = document.getElementById(`tab-${tabName}`);
+            if (contentEl) contentEl.classList.add('active');
+            if (tabBtn) tabBtn.classList.add('active');
+
+            // 3) Load content for the tab if needed
             if (tabName === 'playlists') {
-                loadPlaylists(true); // Reset when switching tabs
+                loadPlaylists(true);
             } else if (tabName === 'albums') {
-                loadAlbums(true); // Reset when switching tabs
+                loadAlbums(true);
             } else if (tabName === 'songs') {
-                loadSongs(true); // Reset when switching tabs
+                loadSongs(true);
             } else if (tabName === 'discover') {
-                loadDiscover(true); // Reset when switching tabs
+                loadDiscover(true);
             }
         }
         
@@ -1066,15 +1157,19 @@
                     const minutes = Math.floor(duration / 60);
                     const seconds = duration % 60;
                     const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                    
                     html += `
-                        <div class="discover-track-item" onclick="playTrack('${track.id}')">
-                            <img src="${track.image || 'https://via.placeholder.com/50?text=No+Image'}" alt="${track.name}" class="discover-track-image">
-                            <div class="discover-track-info">
-                                <div class="discover-track-name">${track.name}</div>
-                                <div class="discover-track-artist">${track.artists.join(', ')} • ${track.album}</div>
+                        <div class="track-row-swipe" data-track-id="${track.id}">
+                            <div class="track-row-action">+ Queue</div>
+                            <div class="track-row-content">
+                                <div class="discover-track-item" onclick="playTrack('${track.id}')">
+                                    <img src="${track.image || 'https://via.placeholder.com/50?text=No+Image'}" alt="${track.name}" class="discover-track-image">
+                                    <div class="discover-track-info">
+                                        <div class="discover-track-name">${track.name}</div>
+                                        <div class="discover-track-artist">${track.artists.join(', ')} • ${track.album}</div>
+                                    </div>
+                                    <div style="color: #1a1a1a; font-size: 0.85rem;">${durationStr}</div>
+                                </div>
                             </div>
-                            <div style="color: #1a1a1a; font-size: 0.85rem;">${durationStr}</div>
                         </div>
                     `;
                 });

@@ -507,6 +507,41 @@ def queue_track(request):
         return JsonResponse({'error': str(e)}, status=400)
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def play_track(request):
+    """Start playback of a track. If playlist_id is provided, play from that playlist starting at this track."""
+    track_id = request.GET.get('id', '')
+    if not track_id:
+        return JsonResponse({'error': 'Track ID required'}, status=400)
+    
+    sp = get_spotify_client(request)
+    if not sp:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    
+    try:
+        use_web_player = request.session.get('use_web_player', True)
+        device_id = None
+        
+        if use_web_player:
+            device_id = request.GET.get('device_id', None)
+        if not device_id:
+            device_id = request.session.get('selected_device_id')
+        
+        playlist_id = request.GET.get('playlist_id', '').strip()
+        if playlist_id:
+            # Play from playlist context starting at this track (rest of playlist continues after)
+            context_uri = f'spotify:playlist:{playlist_id}'
+            offset = {'uri': f'spotify:track:{track_id}'}
+            sp.start_playback(device_id=device_id, context_uri=context_uri, offset=offset)
+        else:
+            # Single track only
+            sp.start_playback(device_id=device_id, uris=[f'spotify:track:{track_id}'])
+        return JsonResponse({'status': 'playing', 'track_id': track_id})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
 def playlists(request):
     """Get user's playlists with pagination."""
     sp = get_spotify_client(request)
@@ -654,9 +689,8 @@ def settings_view(request):
 def update_audio_settings(request):
     """Update audio output settings."""
     import json
-    import subprocess
-    from pathlib import Path
     from wizard.audio_config import configure_audio_output
+    from spotify_client.config import update_env_audio_output
     
     try:
         data = json.loads(request.body)
@@ -671,50 +705,11 @@ def update_audio_settings(request):
         if not success:
             return JsonResponse({'success': False, 'error': message}, status=400)
         
-        # Update .env file
-        env_path = Path('/opt/spotipi/.env')
-        if not env_path.exists():
-            env_path = Path(__file__).resolve().parent.parent.parent / '.env'
+        # Update .env file to reflect the audio configuration
+        env_success, env_message = update_env_audio_output(audio_output)
         
-        # Always try to update .env
-        try:
-            # Read current .env
-            env_lines = []
-            audio_updated = False
-            
-            if env_path.exists():
-                with open(env_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        if line.strip().startswith('AUDIO_OUTPUT=') or line.strip().startswith('I2S_AUDIO_OUTPUT='):
-                            if not audio_updated:
-                                env_lines.append(f'AUDIO_OUTPUT={audio_output}\n')
-                                audio_updated = True
-                        else:
-                            env_lines.append(line)
-            else:
-                # Create new .env file
-                env_lines = [f'AUDIO_OUTPUT={audio_output}\n']
-                audio_updated = True
-            
-            if not audio_updated:
-                env_lines.append(f'\nAUDIO_OUTPUT={audio_output}\n')
-            
-            # Write back using sudo if needed
-            env_content = ''.join(env_lines)
-            try:
-                with open(env_path, 'w', encoding='utf-8') as f:
-                    f.write(env_content)
-            except PermissionError:
-                result = subprocess.run(
-                    ['sudo', 'tee', str(env_path)],
-                    input=env_content.encode('utf-8'),
-                    capture_output=True,
-                    check=False
-                )
-                if result.returncode != 0:
-                    raise PermissionError(f"Could not write to {env_path}")
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': f'Error updating .env: {str(e)}'}, status=500)
+        if not env_success:
+            return JsonResponse({'success': False, 'error': f'Error updating .env: {env_message}'}, status=500)
         
         return JsonResponse({
             'success': True,

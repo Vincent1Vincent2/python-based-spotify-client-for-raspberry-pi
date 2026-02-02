@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
-from spotify_client.config import save_config, is_configured
+from spotify_client.config import save_config, is_configured, update_env_audio_output
 from wizard.audio_config import configure_audio_output, get_audio_options
 from wizard.wifi_config import configure_wifi, scan_wifi_networks
 import socket
@@ -84,13 +84,18 @@ def setup_view(request):
                 else:
                     messages.info(request, wifi_message)
             
-            # Configure audio output (modify /boot/config.txt)
+            # Configure audio output (modify /boot/firmware/config.txt)
             audio_success, audio_message = configure_audio_output(audio_output)
             if not audio_success:
                 messages.warning(request, f"Audio configuration warning: {audio_message}")
             
-            # Save configuration
-            save_config(client_id, client_secret, redirect_uri, audio_output=audio_output)
+            # Update .env file with audio output setting
+            env_success, env_message = update_env_audio_output(audio_output)
+            if not env_success:
+                messages.warning(request, f".env update warning: {env_message}")
+            
+            # Save configuration (audio is NOT saved to config file, only to /boot/firmware/config.txt and .env)
+            save_config(client_id, client_secret, redirect_uri)
             
             # Redirect to done page
             return redirect("/setup/done/")

@@ -113,7 +113,67 @@ echo "Step 8: Collecting static files..."
 "$INSTALL_DIR/venv/bin/python" manage.py collectstatic --noinput
 
 echo ""
-echo "Step 9: Creating systemd service..."
+echo "Step 9: Applying audio configuration from .env file..."
+# Apply audio settings from .env to /boot/firmware/config.txt if .env exists
+if [ -f "$INSTALL_DIR/.env" ]; then
+    echo "Found .env file, applying audio configuration..."
+    # Determine audio option from .env file
+    # Priority: I2S_AUDIO_OUTPUT > AUDIO_OUTPUT > DTOVERLAY (use as audio option)
+    AUDIO_OPTION="analog"  # default
+    if grep -q "^I2S_AUDIO_OUTPUT=" "$INSTALL_DIR/.env"; then
+        AUDIO_OPTION=$(grep "^I2S_AUDIO_OUTPUT=" "$INSTALL_DIR/.env" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | xargs)
+    elif grep -q "^AUDIO_OUTPUT=" "$INSTALL_DIR/.env"; then
+        AUDIO_OPTION=$(grep "^AUDIO_OUTPUT=" "$INSTALL_DIR/.env" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | xargs)
+    elif grep -q "^DTOVERLAY=" "$INSTALL_DIR/.env"; then
+        DTOVERLAY_VALUE=$(grep "^DTOVERLAY=" "$INSTALL_DIR/.env" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | xargs)
+        # If DTOVERLAY is set and not "none", use it as the audio option
+        # The configure_audio_output function will read DTOVERLAY from .env and use it
+        if [ -n "$DTOVERLAY_VALUE" ] && [ "$DTOVERLAY_VALUE" != "none" ]; then
+            AUDIO_OPTION="$DTOVERLAY_VALUE"
+        fi
+    fi
+    
+    # Remove empty/whitespace-only values and handle "none" case
+    if [ -z "$AUDIO_OPTION" ] || [ "$AUDIO_OPTION" = "none" ]; then
+        AUDIO_OPTION="analog"
+    fi
+    
+    echo "Applying audio configuration: $AUDIO_OPTION (DTOVERLAY from .env will be applied if set)"
+    # Verify .env file exists and show DTOVERLAY value for debugging
+    if grep -q "^DTOVERLAY=" "$INSTALL_DIR/.env"; then
+        DTOVERLAY_FOUND=$(grep "^DTOVERLAY=" "$INSTALL_DIR/.env" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | xargs)
+        echo "Found DTOVERLAY in .env: $DTOVERLAY_FOUND"
+    fi
+    # Call configure_audio_output to apply settings from .env to config.txt
+    # This function reads DTOVERLAY, I2C_ARM_ENABLED, I2S_ENABLED, SPI_ENABLED, AUDIO_ENABLED from .env
+    # Pass audio_option as environment variable to avoid quoting issues
+    AUDIO_OPTION_ARG="$AUDIO_OPTION" "$INSTALL_DIR/venv/bin/python" -c "
+import sys
+import os
+sys.path.insert(0, '$INSTALL_DIR')
+os.chdir('$INSTALL_DIR')
+from wizard.audio_config import configure_audio_output
+# Get audio_option from environment variable
+audio_option = os.environ.get('AUDIO_OPTION_ARG', 'analog')
+# Verify DTOVERLAY is loaded
+dtoverlay_from_env = os.getenv('DTOVERLAY', '').strip()
+if dtoverlay_from_env:
+    print(f'DTOVERLAY from environment: {dtoverlay_from_env}')
+else:
+    print('Warning: DTOVERLAY not found in environment variables')
+success, message = configure_audio_output(audio_option)
+if success:
+    print('Audio configuration applied: ' + message)
+else:
+    print('Warning: ' + message)
+    sys.exit(0)  # Don't fail installation if audio config fails
+" || echo "Warning: Audio configuration failed, but continuing installation..."
+else
+    echo "No .env file found, skipping audio configuration (will be set up via wizard)"
+fi
+
+echo ""
+echo "Step 10: Creating systemd service..."
 cat > /etc/systemd/system/spotipi.service << EOF
 [Unit]
 Description=SpotiPi Django Application
@@ -135,18 +195,18 @@ WantedBy=multi-user.target
 EOF
 
 echo ""
-echo "Step 10: Enabling and starting service..."
+echo "Step 11: Enabling and starting service..."
 systemctl daemon-reload
 systemctl enable spotipi.service
 systemctl start spotipi.service
 
 echo ""
-echo "Step 11: Setting file permissions..."
+echo "Step 12: Setting file permissions..."
 chown -R root:root "$INSTALL_DIR"
 chmod -R 755 "$INSTALL_DIR"
 
 echo ""
-echo "Step 12: Setting up browser auto-launch for local display..."
+echo "Step 13: Setting up browser auto-launch for local display..."
 # Create a script to launch the browser in kiosk mode
 cat > /usr/local/bin/spotipi-browser.sh << 'BROWSER_EOF'
 #!/bin/bash
