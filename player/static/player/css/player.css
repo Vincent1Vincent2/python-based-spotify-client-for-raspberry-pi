@@ -630,6 +630,46 @@ body {
     padding: 15px;
 }
 
+/* Swipe row: drag right-to-left to reveal "Add to queue" */
+.track-row-swipe {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--border-radius);
+    margin-bottom: 2px;
+}
+.track-row-swipe:last-child { margin-bottom: 0; }
+.track-row-action {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 80px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-accent, #1db954);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    pointer-events: none;
+}
+.track-row-content {
+    position: relative;
+    z-index: 1;
+    transition: transform 0.15s ease-out;
+    background: var(--color-bg);
+}
+.track-row-swipe.dragging .track-row-content {
+    transition: none;
+}
+.track-row-content .track-item {
+    margin-bottom: 0;
+    border-bottom: none;
+}
+.track-row-swipe:not(:last-child) .track-row-content .track-item {
+    border-bottom: var(--border-width) solid var(--color-border);
+}
+
 .track-item {
     display: flex;
     align-items: center;

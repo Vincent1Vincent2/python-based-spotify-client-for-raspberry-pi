@@ -507,6 +507,41 @@ def queue_track(request):
         return JsonResponse({'error': str(e)}, status=400)
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def play_track(request):
+    """Start playback of a track. If playlist_id is provided, play from that playlist starting at this track."""
+    track_id = request.GET.get('id', '')
+    if not track_id:
+        return JsonResponse({'error': 'Track ID required'}, status=400)
+    
+    sp = get_spotify_client(request)
+    if not sp:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    
+    try:
+        use_web_player = request.session.get('use_web_player', True)
+        device_id = None
+        
+        if use_web_player:
+            device_id = request.GET.get('device_id', None)
+        if not device_id:
+            device_id = request.session.get('selected_device_id')
+        
+        playlist_id = request.GET.get('playlist_id', '').strip()
+        if playlist_id:
+            # Play from playlist context starting at this track (rest of playlist continues after)
+            context_uri = f'spotify:playlist:{playlist_id}'
+            offset = {'uri': f'spotify:track:{track_id}'}
+            sp.start_playback(device_id=device_id, context_uri=context_uri, offset=offset)
+        else:
+            # Single track only
+            sp.start_playback(device_id=device_id, uris=[f'spotify:track:{track_id}'])
+        return JsonResponse({'status': 'playing', 'track_id': track_id})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
 def playlists(request):
     """Get user's playlists with pagination."""
     sp = get_spotify_client(request)
