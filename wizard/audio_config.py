@@ -8,9 +8,16 @@ import shutil
 import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
+from pathlib import Path
 
 # Load environment variables
-load_dotenv()
+# Try to find .env file in the project root (parent of wizard directory)
+env_path = Path(__file__).resolve().parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path, override=True)
+else:
+    # Fallback to default behavior (search current directory and parents)
+    load_dotenv()
 
 BOOT_CONFIG_PATH = "/boot/firmware/config.txt"
 BOOT_CONFIG_BACKUP = "/boot/firmware/config.txt.spotipi.backup"
@@ -171,16 +178,34 @@ def configure_audio_output(audio_option):
     
     Args:
         audio_option: Key from AUDIO_OPTIONS (e.g., 'hifiberry-dac', 'analog', etc.)
+                     If DTOVERLAY is set in .env, audio_option can be any valid dtoverlay value
     
     Returns:
         tuple: (success: bool, message: str)
     """
-    if audio_option not in AUDIO_OPTIONS:
+    # Check if DTOVERLAY is set in environment - if so, allow any audio_option
+    dtoverlay_from_env = os.getenv("DTOVERLAY", "").strip()
+    if dtoverlay_from_env and dtoverlay_from_env != "none":
+        # DTOVERLAY is set, so audio_option can be the dtoverlay value itself
+        # Use a default audio config if the option isn't in AUDIO_OPTIONS
+        if audio_option not in AUDIO_OPTIONS:
+            # Create a temporary config for this dtoverlay value
+            audio_config = {
+                "name": f"Custom DAC ({audio_option})",
+                "dtoverlay": audio_option,
+                "description": f"Custom I2S DAC: {audio_option}"
+            }
+        else:
+            audio_config = AUDIO_OPTIONS[audio_option]
+    elif audio_option not in AUDIO_OPTIONS:
         return False, f"Unknown audio option: {audio_option}"
+    else:
+        audio_config = AUDIO_OPTIONS[audio_option]
     
     # Skip configuration on non-Raspberry Pi systems (for development)
     if not os.path.exists(BOOT_CONFIG_PATH):
-        return True, f"Audio option '{AUDIO_OPTIONS[audio_option]['name']}' selected (config.txt not found, skipping)"
+        option_name = audio_config.get('name', audio_option)
+        return True, f"Audio option '{option_name}' selected (config.txt not found, skipping)"
     
     try:
         # Backup config file
@@ -193,8 +218,9 @@ def configure_audio_output(audio_option):
         # Remove all I2S overlays first (we'll add the correct one later)
         lines = remove_i2s_overlays(lines)
         
-        # Get the selected audio option configuration
-        audio_config = AUDIO_OPTIONS[audio_option]
+        # Get the selected audio option configuration (already set above if DTOVERLAY was checked)
+        if 'audio_config' not in locals():
+            audio_config = AUDIO_OPTIONS[audio_option]
         dtoverlay_from_option = audio_config.get("dtoverlay")
         
         # Read environment variables (with fallback to audio_option if not set)
