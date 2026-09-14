@@ -1,18 +1,178 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Spotify Client</title>
     {% load static %}
     <link rel="stylesheet" href="{% static 'player/css/login.css' %}">
+    <style>
+        /* Account switcher - scoped here rather than login.css since
+           it's a self-contained addition; move it if you'd rather keep
+           all styling in one place. */
+        .account-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .account-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .account-select-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--color-bg);
+            border: var(--border-width) solid var(--color-text);
+            color: var(--color-text);
+            padding: 12px 16px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-size: 1rem;
+            text-align: left;
+        }
+
+        .account-select-btn:hover {
+            background: var(--color-text);
+            color: var(--color-bg);
+        }
+
+        .account-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .account-avatar-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--color-gray-light);
+            color: var(--color-text);
+            font-weight: 600;
+            border: var(--border-width) solid var(--color-text);
+        }
+
+        .account-select-btn:hover .account-avatar-placeholder {
+            color: var(--color-bg);
+            border-color: var(--color-bg);
+        }
+
+        .account-name {
+            font-weight: 500;
+        }
+
+        .account-remove-btn {
+            background: transparent;
+            border: var(--border-width) solid var(--color-text);
+            color: var(--color-text);
+            width: 40px;
+            height: 40px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+
+        .account-remove-btn:hover {
+            background: var(--color-text);
+            color: var(--color-bg);
+        }
+
+        .or-divider {
+            opacity: 0.6;
+            margin: 10px 0 !important;
+        }
+
+        .login-status {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            min-height: 1.2em;
+        }
+    </style>
 </head>
+
 <body>
     <div class="login-container">
         <h1>Spotify Client</h1>
+
+        {% if accounts %}
+        <p>Choose an account</p>
+        <div class="account-list" id="accountList">
+            {% for account in accounts %}
+            <div class="account-row" data-account-id="{{ account.id }}">
+                <button class="account-select-btn" onclick="switchAccount({{ account.id }})">
+                    {% if account.avatar_url %}
+                    <img src="{{ account.avatar_url }}" alt="" class="account-avatar">
+                    {% else %}
+                    <div class="account-avatar account-avatar-placeholder">{{ account.display_name|slice:":1"|upper }}
+                    </div>
+                    {% endif %}
+                    <span class="account-name">{{ account.display_name }}</span>
+                </button>
+                <button class="account-remove-btn" onclick="removeAccount({{ account.id }}, event)"
+                    title="Remove this account from this device">✕</button>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="or-divider">or</p>
+        <a href="{% url 'login' %}?auth=1" class="btn-login">Add Another Account</a>
+        {% else %}
         <p>Connect your Spotify account to start controlling playback</p>
         <a href="{% url 'login' %}?auth=1" class="btn-login">Login with Spotify</a>
-    </div>
-</body>
-</html>
+        {% endif %}
 
+        <div id="loginStatus" class="login-status"></div>
+    </div>
+
+    <script>
+        function switchAccount(accountId) {
+            const status = document.getElementById('loginStatus');
+            status.textContent = 'Switching...';
+            fetch(`/accounts/switch/?id=${accountId}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'switched') {
+                        window.location.href = '/';
+                    } else {
+                        status.textContent = 'Error: ' + (data.error || 'Could not switch account');
+                    }
+                })
+                .catch(error => {
+                    status.textContent = 'Error: ' + error;
+                });
+        }
+
+        function removeAccount(accountId, event) {
+            event.stopPropagation();
+            if (!confirm('Remove this account from this device? You will need to log in again to use it.')) {
+                return;
+            }
+            const status = document.getElementById('loginStatus');
+            fetch(`/accounts/remove/?id=${accountId}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'removed') {
+                        window.location.reload();
+                    } else {
+                        status.textContent = 'Error: ' + (data.error || 'Could not remove account');
+                    }
+                })
+                .catch(error => {
+                    status.textContent = 'Error: ' + error;
+                });
+        }
+    </script>
+</body>
+
+</html>

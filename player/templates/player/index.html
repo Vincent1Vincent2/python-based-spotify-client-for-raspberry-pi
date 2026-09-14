@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,34 +8,185 @@
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
     {% load static %}
     <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
+    <style>
+        /* Scrub bar - scoped here rather than player.css so this
+           feature stays self-contained; can be moved into player.css
+           later if you'd rather keep all styling in one place. */
+        .progress-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 0 5px;
+        }
+
+        .progress-time {
+            font-size: 0.8rem;
+            color: var(--color-text);
+            min-width: 36px;
+            text-align: center;
+            user-select: none;
+        }
+
+        .progress-track {
+            position: relative;
+            flex: 1;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .progress-track::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--color-gray-light);
+            border: var(--border-width) solid var(--color-border);
+        }
+
+        .progress-fill {
+            position: absolute;
+            left: 0;
+            height: 4px;
+            width: 0%;
+            background: var(--color-text);
+            pointer-events: none;
+        }
+
+        .progress-handle {
+            position: absolute;
+            left: 0%;
+            width: 16px;
+            height: 16px;
+            margin-left: -8px;
+            background: var(--color-text);
+            border-radius: 50%;
+            pointer-events: none;
+            transition: transform 0.1s ease;
+        }
+
+        .progress-track.dragging .progress-handle {
+            transform: scale(1.3);
+        }
+
+        .progress-container.disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
+        /* Three-dot "more actions" button, stacked above the track
+           duration - opens a small menu with Play Now / Add to Queue,
+           as an explicit alternative to the swipe gesture. */
+        .track-actions-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            min-width: 50px;
+        }
+
+        .track-menu-btn {
+            background: transparent;
+            border: none;
+            color: var(--color-text);
+            font-size: 1.2rem;
+            line-height: 1;
+            padding: 4px 10px;
+            cursor: pointer;
+            border-radius: var(--border-radius);
+        }
+
+        .track-menu-btn:hover {
+            background: rgba(128, 128, 128, 0.2);
+        }
+
+        .track-item:hover .track-menu-btn,
+        .discover-track-item:hover .track-menu-btn {
+            color: var(--color-bg);
+        }
+
+        .track-context-menu {
+            position: fixed;
+            z-index: 9999;
+            background: var(--color-bg);
+            border: var(--border-width) solid var(--color-border);
+            border-radius: var(--border-radius);
+            min-width: 210px;
+            max-width: 260px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .track-context-menu-title {
+            padding: 10px 14px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            border-bottom: var(--border-width) solid var(--color-border);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .track-context-menu-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: var(--color-bg);
+            border: none;
+            color: var(--color-text);
+            padding: 13px 14px;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .track-context-menu-item:hover {
+            background: var(--color-text);
+            color: var(--color-bg);
+        }
+    </style>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
             <h1>Spotify Client</h1>
             <div class="header-buttons">
                 <a href="{% url 'settings' %}" class="settings-btn">Settings</a>
-            <a href="{% url 'logout' %}" class="logout-btn">Logout</a>
+                <a href="{% url 'logout' %}" class="logout-btn">Logout</a>
             </div>
         </div>
-        
+
         <div class="player-card">
             <div class="player-status" id="playerStatus">Initializing player...</div>
-            
+
             <div class="track-info" id="trackInfo">
                 <div class="track-name">No track playing</div>
             </div>
-            
-            <div style="text-align: center; margin-bottom: 15px;">
-                <button class="btn" onclick="checkCurrentPlayback()" style="font-size: 0.9rem; padding: 8px 15px;">Refresh Playback Info</button>
+
+            <div class="progress-container disabled" id="progressContainer">
+                <div class="progress-time" id="progressCurrent">0:00</div>
+                <div class="progress-track" id="progressTrack">
+                    <div class="progress-fill" id="progressFill"></div>
+                    <div class="progress-handle" id="progressHandle"></div>
+                </div>
+                <div class="progress-time" id="progressDuration">0:00</div>
             </div>
-            
+
+            <div style="text-align: center; margin-bottom: 15px;">
+                <button class="btn" onclick="checkCurrentPlayback()"
+                    style="font-size: 0.9rem; padding: 8px 15px;">Refresh Playback Info</button>
+            </div>
+
             <div class="controls">
                 <button class="btn btn-previous" id="prevBtn" onclick="previousTrack()" disabled>⏮ Previous</button>
                 <button class="btn btn-play" id="playBtn" onclick="togglePlayback()" disabled>▶ Play</button>
                 <button class="btn btn-next" id="nextBtn" onclick="nextTrack()" disabled>⏭ Next</button>
             </div>
-            
+
             <div class="device-selector">
                 <h3>Select Playback Device</h3>
                 <div class="device-list" id="deviceList">
@@ -48,54 +200,62 @@
                         </button>
                     </div>
                     {% for device in devices %}
-                    <div class="device-item {% if not use_web_player and device.id == selected_device_id %}active{% endif %}" data-device-id="{{ device.id }}">
+                    <div class="device-item {% if not use_web_player and device.id == selected_device_id %}active{% endif %}"
+                        data-device-id="{{ device.id }}">
                         <div class="device-info">
                             <div class="device-name">{{ device.name }}</div>
                             <div class="device-type">{{ device.type }} • Volume: {{ device.volume_percent }}%</div>
                         </div>
                         <button class="device-select-btn" onclick="selectDevice('{{ device.id }}')">
-                            {% if not use_web_player and device.id == selected_device_id %}Selected{% else %}Select{% endif %}
+                            {% if not use_web_player and device.id == selected_device_id %}Selected{% else %} Select
+                            {%endif%}
                         </button>
                     </div>
                     {% endfor %}
                 </div>
             </div>
-            
+
             <div class="search-section">
                 <div class="search-box">
-                    <input type="text" class="search-input" id="searchInput" placeholder="Search for a song..." onkeypress="handleSearchKeyPress(event)">
+                    <input type="text" class="search-input" id="searchInput"
+                        placeholder="Search songs, albums, artists, playlists..."
+                        onkeypress="handleSearchKeyPress(event)">
                     <button class="btn" onclick="searchTracks()">Search</button>
                 </div>
                 <div class="search-results" id="searchResults"></div>
             </div>
-            
+
             <div class="tabs-container">
                 <div class="tabs-nav">
-                    <button class="tab-button active" onclick="switchTab('playlists')" id="tab-playlists">Playlists</button>
+                    <button class="tab-button active" onclick="switchTab('playlists')"
+                        id="tab-playlists">Playlists</button>
                     <button class="tab-button" onclick="switchTab('albums')" id="tab-albums">Albums</button>
                     <button class="tab-button" onclick="switchTab('songs')" id="tab-songs">Songs</button>
                     <button class="tab-button" onclick="switchTab('discover')" id="tab-discover">Discover</button>
                 </div>
-                
+
                 <div class="tab-content active" id="content-playlists">
                     <div class="playlists-section" id="playlistsSection">
                         <div class="playlists-header">
                             <h3>Playlists</h3>
                             <div class="sort-controls">
-                                <button class="sort-btn active" onclick="sortPlaylists('default')" id="sort-default">Default</button>
+                                <button class="sort-btn active" onclick="sortPlaylists('default')"
+                                    id="sort-default">Default</button>
                                 <button class="sort-btn" onclick="sortPlaylists('name')" id="sort-name">Name</button>
-                                <button class="sort-btn" onclick="sortPlaylists('tracks')" id="sort-tracks">Tracks</button>
+                                <button class="sort-btn" onclick="sortPlaylists('tracks')"
+                                    id="sort-tracks">Tracks</button>
                             </div>
                         </div>
                         <div class="playlists-grid" id="playlistsGrid">
                             <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading playlists...</div>
                         </div>
                         <div style="text-align: center; margin-top: 20px;">
-                            <button class="btn" id="loadMorePlaylists" onclick="loadPlaylists(false)" style="display: none;">Load More</button>
+                            <button class="btn" id="loadMorePlaylists" onclick="loadPlaylists(false)"
+                                style="display: none;">Load More</button>
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="tab-content" id="content-albums">
                     <div class="albums-section" id="albumsSection">
                         <div class="section-header">
@@ -105,11 +265,12 @@
                             <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading albums...</div>
                         </div>
                         <div style="text-align: center; margin-top: 20px;">
-                            <button class="btn" id="loadMoreAlbums" onclick="loadAlbums(false)" style="display: none;">Load More</button>
+                            <button class="btn" id="loadMoreAlbums" onclick="loadAlbums(false)"
+                                style="display: none;">Load More</button>
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="tab-content" id="content-songs">
                     <div class="songs-section" id="songsSection">
                         <div class="section-header">
@@ -119,11 +280,12 @@
                             <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading songs...</div>
                         </div>
                         <div style="text-align: center; margin-top: 20px;">
-                            <button class="btn" id="loadMoreSongs" onclick="loadSongs(false)" style="display: none;">Load More</button>
+                            <button class="btn" id="loadMoreSongs" onclick="loadSongs(false)"
+                                style="display: none;">Load More</button>
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="tab-content" id="content-discover">
                     <div class="discover-section" id="discoverSection">
                         <div class="section-header">
@@ -136,18 +298,19 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="playlist-detail-view" id="playlistDetailView">
-                <button class="back-button" id="detailBackButton" onclick="backFromDetail()">← Back to Playlists</button>
+                <button class="back-button" id="detailBackButton" onclick="backFromDetail()">← Back to
+                    Playlists</button>
                 <div class="playlist-detail-header" id="playlistDetailHeader"></div>
                 <div class="playlist-detail-actions" id="playlistDetailActions"></div>
                 <div class="tracks-list" id="tracksList"></div>
             </div>
-            
+
             <div class="status-indicator" id="statusIndicator"></div>
         </div>
     </div>
-    
+
     <script>
         const clientId = '{{ client_id }}';
         let accessToken = '{{ access_token|default:"" }}';
@@ -155,9 +318,15 @@
         let deviceId;
         let currentTrack = null;
         let isPlaying = false;
-        let useWebPlayer = {% if use_web_player %}true{% else %}false{% endif %};
+        let useWebPlayer = {% if use_web_player %} true {% else %} false {% endif %};
         let detailViewSource = null; // 'playlists' | 'albums' | 'discover' - where we opened the detail view from
-        
+
+        // --- Scrub bar state ---
+        let progressDurationMs = 0;
+        let progressCurrentMs = 0;
+        let isDraggingProgress = false;
+        let progressTickInterval = null;
+
         window.onSpotifyWebPlaybackSDKReady = () => {
             // Always initialize the web player to get device ID, even if not currently selected
             if (!accessToken) {
@@ -174,7 +343,7 @@
             } else {
                 initializePlayer();
             }
-            
+
             // Update UI based on whether web player is selected
             if (!useWebPlayer) {
                 document.getElementById('playerStatus').textContent = 'Using external device';
@@ -183,14 +352,14 @@
                 document.getElementById('nextBtn').disabled = false;
             }
         };
-        
+
         function initializePlayer() {
             player = new Spotify.Player({
                 name: 'Spotify Client',
                 getOAuthToken: cb => { cb(accessToken); },
                 volume: 0.5
             });
-            
+
             player.addListener('ready', ({ device_id }) => {
                 deviceId = device_id;
                 document.getElementById('playerStatus').textContent = 'Player ready!';
@@ -198,30 +367,31 @@
                 document.getElementById('playBtn').disabled = false;
                 document.getElementById('nextBtn').disabled = false;
             });
-            
+
             player.addListener('not_ready', ({ device_id }) => {
                 document.getElementById('playerStatus').textContent = 'Player has gone offline';
             });
-            
+
             player.addListener('player_state_changed', state => {
                 if (!state) {
                     return;
                 }
-                
+
                 currentTrack = state.track_window.current_track;
                 isPlaying = !state.paused;
-                
+
                 updateTrackDisplay();
                 updatePlayButton();
+                setProgress(state.position, state.duration, isPlaying);
             });
-            
+
             player.connect();
         }
-        
+
         function updateTrackDisplay() {
             if (currentTrack) {
                 const trackInfo = document.getElementById('trackInfo');
-                
+
                 // Handle episodes (podcasts) from Web Playback SDK
                 if (currentTrack.type === 'episode' || currentTrack.content_type === 'podcast') {
                     const album = currentTrack.album || {};
@@ -243,7 +413,7 @@
                 }
             }
         }
-        
+
         function updatePlayButton() {
             const playBtn = document.getElementById('playBtn');
             if (isPlaying) {
@@ -252,10 +422,123 @@
                 playBtn.textContent = '▶ Play';
             }
         }
-        
+
+        // --- Scrub bar ---
+        // Fed from two places: the Web Playback SDK's player_state_changed
+        // (immediate, web player only) and checkCurrentPlayback's poll
+        // (every 3s, covers external devices too). Between updates a local
+        // interval nudges the displayed position forward so it doesn't sit
+        // still for up to 3 seconds at a time.
+
+        function formatMsAsTime(ms) {
+            const totalSeconds = Math.max(0, Math.floor((ms || 0) / 1000));
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function renderProgressBar() {
+            const fill = document.getElementById('progressFill');
+            const handle = document.getElementById('progressHandle');
+            const currentEl = document.getElementById('progressCurrent');
+            const durationEl = document.getElementById('progressDuration');
+            const container = document.getElementById('progressContainer');
+            if (!fill || !handle || !currentEl || !durationEl || !container) return;
+
+            const hasTrack = progressDurationMs > 0;
+            container.classList.toggle('disabled', !hasTrack);
+
+            const fraction = hasTrack ? Math.min(1, progressCurrentMs / progressDurationMs) : 0;
+            fill.style.width = `${fraction * 100}%`;
+            handle.style.left = `${fraction * 100}%`;
+            currentEl.textContent = formatMsAsTime(progressCurrentMs);
+            durationEl.textContent = formatMsAsTime(progressDurationMs);
+        }
+
+        function setProgress(currentMs, durationMs, playing) {
+            if (isDraggingProgress) return; // don't fight the user's finger
+            progressCurrentMs = currentMs || 0;
+            progressDurationMs = durationMs || 0;
+            renderProgressBar();
+
+            if (playing && progressDurationMs > 0) {
+                startProgressTicking();
+            } else {
+                stopProgressTicking();
+            }
+        }
+
+        function startProgressTicking() {
+            if (progressTickInterval) return;
+            progressTickInterval = setInterval(() => {
+                if (isDraggingProgress) return;
+                progressCurrentMs = Math.min(progressDurationMs, progressCurrentMs + 250);
+                renderProgressBar();
+            }, 250);
+        }
+
+        function stopProgressTicking() {
+            if (progressTickInterval) {
+                clearInterval(progressTickInterval);
+                progressTickInterval = null;
+            }
+        }
+
+        function sendSeek(positionMs) {
+            fetch(`/seek/?position_ms=${Math.round(positionMs)}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('statusIndicator').textContent = 'Error seeking: ' + error;
+                });
+        }
+
+        (function initProgressScrub() {
+            const track = document.getElementById('progressTrack');
+            if (!track) return;
+
+            function fractionFromEvent(e) {
+                const rect = track.getBoundingClientRect();
+                const x = Math.min(rect.right, Math.max(rect.left, e.clientX));
+                return rect.width > 0 ? (x - rect.left) / rect.width : 0;
+            }
+
+            function onDown(e) {
+                if (progressDurationMs <= 0) return;
+                isDraggingProgress = true;
+                track.classList.add('dragging');
+                progressCurrentMs = fractionFromEvent(e) * progressDurationMs;
+                renderProgressBar();
+                track.setPointerCapture(e.pointerId);
+            }
+
+            function onMove(e) {
+                if (!isDraggingProgress) return;
+                progressCurrentMs = fractionFromEvent(e) * progressDurationMs;
+                renderProgressBar();
+            }
+
+            function onUp(e) {
+                if (!isDraggingProgress) return;
+                isDraggingProgress = false;
+                track.classList.remove('dragging');
+                sendSeek(progressCurrentMs);
+                if (isPlaying) startProgressTicking();
+            }
+
+            track.addEventListener('pointerdown', onDown);
+            track.addEventListener('pointermove', onMove);
+            track.addEventListener('pointerup', onUp);
+            track.addEventListener('pointercancel', onUp);
+        })();
+
         // Store current track data to avoid unnecessary updates
         let currentTrackData = null;
-        
+
         function updateTrackDisplayFromAPI(trackData) {
             if (trackData) {
                 const trackInfo = document.getElementById('trackInfo');
@@ -263,11 +546,11 @@
                     console.error('trackInfo element not found');
                     return;
                 }
-                
+
                 // Check if track has actually changed (by ID)
                 const trackChanged = !currentTrackData || currentTrackData.id !== trackData.id;
                 const imageChanged = trackChanged || (currentTrackData && currentTrackData.image !== trackData.image);
-                
+
                 // Only update if track changed or if this is first load
                 if (trackChanged) {
                     // Track changed - rebuild the entire display
@@ -300,11 +583,11 @@
                     const nameEl = trackInfo.querySelector('.track-name');
                     const artistEl = trackInfo.querySelector('.track-artist');
                     const albumEl = trackInfo.querySelector('.track-album');
-                    
+
                     if (nameEl && nameEl.textContent !== trackData.name) {
                         nameEl.textContent = trackData.name;
                     }
-                    
+
                     if (trackData.type === 'episode') {
                         if (artistEl && artistEl.textContent !== (trackData.show || 'Podcast')) {
                             artistEl.textContent = trackData.show || 'Podcast';
@@ -327,14 +610,14 @@
                 currentTrackData = null;
             }
         }
-        
+
         function updatePlayButtonFromAPI(isPlaying) {
             const playBtn = document.getElementById('playBtn');
             if (playBtn) {
                 playBtn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
             }
         }
-        
+
         function checkCurrentPlayback() {
             // Check current playback for external devices
             fetch('/current-playback/')
@@ -349,12 +632,12 @@
                         console.log('Current playback error:', data.error);
                         return;
                     }
-                    
+
                     // Get the actual active device ID from the API response (the device that's actually playing)
                     const activeDeviceId = data.device?.id || data.debug?.device_id;
                     // Check if the active device is the web player
                     const isWebPlayerActive = activeDeviceId && deviceId && activeDeviceId === deviceId;
-                    
+
                     console.log('Playback check:', {
                         activeDeviceId,
                         webPlayerDeviceId: deviceId,
@@ -364,7 +647,7 @@
                         isPlaying: data.is_playing,
                         currentlyPlayingType: data.debug?.currently_playing_type
                     });
-                    
+
                     // If we have track/episode data from API
                     if (data.track) {
                         // If the active device is NOT the web player, always update from API
@@ -373,6 +656,12 @@
                             console.log('Updating display from API track data');
                             updateTrackDisplayFromAPI(data.track);
                             updatePlayButtonFromAPI(data.is_playing);
+                        }
+                        // Scrub bar: the web player's own progress comes from
+                        // player_state_changed (more frequent/accurate), so
+                        // only drive it from the poll for external devices.
+                        if (!isWebPlayerActive) {
+                            setProgress(data.track.progress_ms, data.track.duration_ms, data.is_playing);
                         }
                         // Otherwise, web player is active and has SDK track data, so skip (SDK will handle it)
                     } else {
@@ -407,6 +696,7 @@
                                 trackInfo.innerHTML = `<div class="track-name">${message}</div>`;
                             }
                             updatePlayButtonFromAPI(false);
+                            setProgress(0, 0, false);
                         }
                     }
                 })
@@ -414,7 +704,7 @@
                     console.error('Current playback fetch error:', error);
                 });
         }
-        
+
         // Check current playback on page load and periodically
         // Wait for page to be ready
         if (document.readyState === 'loading') {
@@ -427,7 +717,7 @@
             checkCurrentPlayback();
             setInterval(checkCurrentPlayback, 3000); // Check every 3 seconds
         }
-        
+
         function togglePlayback() {
             if (useWebPlayer && player) {
                 player.togglePlay();
@@ -444,7 +734,7 @@
                     });
             }
         }
-        
+
         function nextTrack() {
             if (useWebPlayer && player) {
                 player.nextTrack();
@@ -453,7 +743,7 @@
                     .then(response => response.json());
             }
         }
-        
+
         function previousTrack() {
             if (useWebPlayer && player) {
                 player.previousTrack();
@@ -462,43 +752,123 @@
                     .then(response => response.json());
             }
         }
-        
+
         function handleSearchKeyPress(event) {
             if (event.key === 'Enter') {
                 searchTracks();
             }
         }
-        
+
         function searchTracks() {
             const query = document.getElementById('searchInput').value.trim();
             if (!query) return;
-            
+            performSearch(query);
+        }
+
+        function searchForArtist(name) {
+            // Artists don't have their own detail view here - re-running
+            // the search scoped to their name is a simple way to surface
+            // their tracks/albums/playlists without a whole new endpoint.
+            document.getElementById('searchInput').value = name;
+            performSearch(name);
+        }
+
+        function performSearch(query) {
+            const results = document.getElementById('searchResults');
+            results.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">Searching...</div>';
+
             fetch(`/search/?q=${encodeURIComponent(query)}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        document.getElementById('searchResults').innerHTML = '<div>Error: ' + data.error + '</div>';
+                        results.innerHTML = '<div style="text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
                         return;
                     }
-                    
-                    const results = document.getElementById('searchResults');
-                    if (data.tracks.length === 0) {
-                        results.innerHTML = '<div>No results found</div>';
-                        return;
-                    }
-                    
-                    results.innerHTML = data.tracks.map(track => `
-                        <div class="search-result-item" onclick="playTrack('${track.id}')">
-                            <img src="${track.image || ''}" alt="Album cover" class="result-image">
-                            <div class="result-info">
-                                <div class="result-name">${track.name}</div>
-                                <div class="result-artist">${track.artists.join(', ')}</div>
-                            </div>
-                        </div>
-                    `).join('');
+                    renderSearchResults(data);
+                })
+                .catch(error => {
+                    results.innerHTML = '<div style="text-align: center; padding: 20px;">Error searching: ' + error + '</div>';
                 });
         }
-        
+
+        function renderSearchResults(data) {
+            const results = document.getElementById('searchResults');
+            const tracks = data.tracks || [];
+            const albums = data.albums || [];
+            const artists = data.artists || [];
+            const playlists = data.playlists || [];
+
+            if (tracks.length === 0 && albums.length === 0 && artists.length === 0 && playlists.length === 0) {
+                results.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No results found</div>';
+                return;
+            }
+
+            // Reuses the existing .discover-section-group / .discover-grid /
+            // .discover-item classes from player.css instead of introducing
+            // new ones, since the layout need is identical to the Discover tab.
+            let html = '<div class="discover-content">';
+
+            if (tracks.length > 0) {
+                html += '<div class="discover-section-group">';
+                html += '<div class="discover-section-title">🎵 Songs</div>';
+                html += tracks.map(track => `
+                    <div class="search-result-item" onclick="playTrack('${track.id}')">
+                        <img src="${track.image || ''}" alt="Album cover" class="result-image">
+                        <div class="result-info">
+                            <div class="result-name">${track.name}</div>
+                            <div class="result-artist">${track.artists.join(', ')}</div>
+                        </div>
+                    </div>
+                `).join('');
+                html += '</div>';
+            }
+
+            if (albums.length > 0) {
+                html += '<div class="discover-section-group">';
+                html += '<div class="discover-section-title">💿 Albums & Singles</div>';
+                html += '<div class="discover-grid">';
+                html += albums.map(album => `
+                    <div class="discover-item" onclick="viewAlbum('${album.id}')">
+                        <img src="${album.image || 'https://via.placeholder.com/180?text=No+Image'}" alt="${album.name}" class="discover-item-image">
+                        <div class="discover-item-name">${album.name}${album.album_type === 'single' ? ' (Single)' : ''}</div>
+                        <div class="discover-item-info">${album.artists.join(', ')}</div>
+                    </div>
+                `).join('');
+                html += '</div></div>';
+            }
+
+            if (playlists.length > 0) {
+                html += '<div class="discover-section-group">';
+                html += '<div class="discover-section-title">📃 Playlists</div>';
+                html += '<div class="discover-grid">';
+                html += playlists.map(playlist => `
+                    <div class="discover-item" onclick="viewPlaylist('${playlist.id}')">
+                        <img src="${playlist.image || 'https://via.placeholder.com/180?text=No+Image'}" alt="${playlist.name}" class="discover-item-image">
+                        <div class="discover-item-name">${playlist.name}</div>
+                        <div class="discover-item-info">${playlist.tracks_count} tracks • ${playlist.owner}</div>
+                    </div>
+                `).join('');
+                html += '</div></div>';
+            }
+
+            if (artists.length > 0) {
+                html += '<div class="discover-section-group">';
+                html += '<div class="discover-section-title">🎤 Artists</div>';
+                html += '<div class="discover-grid">';
+                html += artists.map(artist => `
+                    <div class="discover-item" onclick="searchForArtist('${artist.name.replace(/'/g, "\\'")}')">
+                        <img src="${artist.image || 'https://via.placeholder.com/180?text=No+Image'}" alt="${artist.name}" class="discover-item-image" style="border-radius: 50%;">
+                        <div class="discover-item-name">${artist.name}</div>
+                        <div class="discover-item-info">Artist</div>
+                    </div>
+                `).join('');
+                html += '</div></div>';
+            }
+
+            html += '</div>';
+            results.innerHTML = html;
+        }
+
         function playTrack(trackId, playlistId) {
             // playlistId optional: when set, play from that playlist starting at this track (rest of playlist continues)
             const params = new URLSearchParams({ id: trackId });
@@ -524,8 +894,22 @@
                     document.getElementById('statusIndicator').textContent = 'Error: ' + error;
                 });
         }
-        
+
+        function escapeAttr(str) {
+            // Just enough escaping for safely dropping a track name into
+            // a double-quoted HTML attribute (data-track-name="...").
+            return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+        }
+
         function addToQueue(trackId) {
+            // Spotify's queue endpoint appends to the end of the queue.
+            // In this single-user kiosk app nothing else adds to the
+            // queue concurrently, so in practice that end position IS
+            // "right after whatever's currently playing" for the first
+            // item queued, and preserves swipe/tap order for anything
+            // queued after that. There's no Spotify API for inserting
+            // into an arbitrary queue position, so this is as close to
+            // "play next" as the public API allows.
             fetch(`/queue/?id=${encodeURIComponent(trackId)}`, { method: 'POST' })
                 .then(response => response.json())
                 .then(data => {
@@ -538,13 +922,75 @@
                 })
                 .catch(error => { document.getElementById('statusIndicator').textContent = 'Error: ' + error; });
         }
-        
+
+        let activeTrackMenu = null;
+
+        function closeTrackMenu() {
+            if (activeTrackMenu) {
+                activeTrackMenu.remove();
+                activeTrackMenu = null;
+            }
+        }
+
+        function openTrackMenu(event, btn) {
+            event.stopPropagation();
+            closeTrackMenu();
+
+            const trackId = btn.dataset.trackId;
+            const trackName = btn.dataset.trackName || '';
+            const playlistId = btn.dataset.playlistId || null;
+
+            const menu = document.createElement('div');
+            menu.className = 'track-context-menu';
+            menu.innerHTML = `
+                <div class="track-context-menu-title">${trackName}</div>
+                <button class="track-context-menu-item" data-action="play">▶ Play Now</button>
+                <button class="track-context-menu-item" data-action="queue">➕ Add to Queue</button>
+            `;
+            document.body.appendChild(menu);
+
+            // Position near the button, flipping above it if there's not
+            // enough room below (common near the bottom of scroll areas).
+            const rect = btn.getBoundingClientRect();
+            const menuWidth = menu.offsetWidth || 210;
+            const menuHeight = menu.offsetHeight || 96;
+            let left = rect.right - menuWidth;
+            left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8));
+            let top = rect.bottom + 6;
+            if (top + menuHeight > window.innerHeight) {
+                top = rect.top - menuHeight - 6;
+            }
+            menu.style.left = `${left}px`;
+            menu.style.top = `${Math.max(8, top)}px`;
+
+            menu.querySelector('[data-action="play"]').addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (playlistId) {
+                    playTrack(trackId, playlistId);
+                } else {
+                    playTrack(trackId);
+                }
+                closeTrackMenu();
+            });
+            menu.querySelector('[data-action="queue"]').addEventListener('click', (e) => {
+                e.stopPropagation();
+                addToQueue(trackId);
+                closeTrackMenu();
+            });
+
+            activeTrackMenu = menu;
+        }
+
+        document.addEventListener('click', () => closeTrackMenu());
+        document.addEventListener('scroll', () => closeTrackMenu(), true);
+
         (function initSwipeToQueue() {
             const SWIPE_THRESHOLD = 55;
             const MAX_DRAG = 80;
             let swipeState = null;
             let preventClickRow = null;
             function onDown(e) {
+                if (e.target.closest && e.target.closest('.track-menu-btn')) return;
                 const row = e.target.closest && e.target.closest('.track-row-swipe');
                 if (!row) return;
                 const trackId = row.getAttribute('data-track-id');
@@ -568,7 +1014,7 @@
                 if (tx <= -SWIPE_THRESHOLD) {
                     addToQueue(swipeState.trackId);
                     preventClickRow = swipeState.row;
-                    setTimeout(function() { preventClickRow = null; }, 300);
+                    setTimeout(function () { preventClickRow = null; }, 300);
                 }
                 content.style.transform = '';
                 content.style.transition = 'transform 0.15s ease-out';
@@ -578,28 +1024,28 @@
             document.addEventListener('pointermove', onMove, { passive: false });
             document.addEventListener('pointerup', onUp, { passive: true });
             document.addEventListener('pointercancel', onUp, { passive: true });
-            document.addEventListener('click', function(e) {
+            document.addEventListener('click', function (e) {
                 if (preventClickRow && preventClickRow.contains(e.target)) {
                     e.preventDefault();
                     e.stopPropagation();
                 }
             }, true);
         })();
-        
+
         function selectWebPlayer() {
             // Make sure we have the web player device ID before transferring
             if (!deviceId && player) {
                 document.getElementById('statusIndicator').textContent = 'Web player not ready yet, please wait...';
                 return;
             }
-            
+
             if (!deviceId) {
                 document.getElementById('statusIndicator').textContent = 'Web player device not available';
                 return;
             }
-            
+
             document.getElementById('statusIndicator').textContent = 'Transferring to web player...';
-            
+
             fetch(`/select-web-player/?device_id=${deviceId}`, { method: 'POST' })
                 .then(response => response.json())
                 .then(data => {
@@ -627,7 +1073,7 @@
                     document.getElementById('statusIndicator').textContent = 'Error: ' + error;
                 });
         }
-        
+
         function selectDevice(deviceId) {
             fetch(`/transfer/?device_id=${deviceId}`, { method: 'POST' })
                 .then(response => response.json())
@@ -645,20 +1091,20 @@
                     document.getElementById('statusIndicator').textContent = 'Error: ' + error;
                 });
         }
-        
+
         let allPlaylists = [];
         let originalPlaylistsOrder = []; // Store original order from API
         let currentSort = 'default';
         let playlistsOffset = 0;
         let playlistsHasMore = false;
-        
+
         function loadPlaylists(reset = false) {
             if (reset) {
                 allPlaylists = [];
                 originalPlaylistsOrder = [];
                 playlistsOffset = 0;
             }
-            
+
             fetch(`/playlists/?offset=${playlistsOffset}&limit=50`)
                 .then(response => response.json())
                 .then(data => {
@@ -666,14 +1112,14 @@
                         document.getElementById('playlistsGrid').innerHTML = '<div style="text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
                         return;
                     }
-                    
+
                     allPlaylists = allPlaylists.concat(data.playlists);
                     originalPlaylistsOrder = originalPlaylistsOrder.concat(data.playlists);
                     playlistsHasMore = data.has_more;
                     playlistsOffset += data.playlists.length;
-                    
+
                     displayPlaylists(allPlaylists);
-                    
+
                     // Show/hide load more button
                     const loadMoreBtn = document.getElementById('loadMorePlaylists');
                     if (loadMoreBtn) {
@@ -684,14 +1130,14 @@
                     document.getElementById('playlistsGrid').innerHTML = '<div style="text-align: center; padding: 20px;">Error loading playlists</div>';
                 });
         }
-        
+
         function displayPlaylists(playlists) {
             const grid = document.getElementById('playlistsGrid');
             if (playlists.length === 0) {
                 grid.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No playlists found</div>';
                 return;
             }
-            
+
             grid.innerHTML = playlists.map(playlist => {
                 return `
                     <div class="playlist-item" onclick="viewPlaylist('${playlist.id}')">
@@ -702,17 +1148,17 @@
                 `;
             }).join('');
         }
-        
+
         function viewPlaylist(playlistId) {
             // Hide playlists section, show detail view
             const playlistsSection = document.getElementById('playlistsSection');
             const playlistDetailView = document.getElementById('playlistDetailView');
-            
+
             if (!playlistsSection || !playlistDetailView) {
                 console.error('Required elements not found');
                 return;
             }
-            
+
             const activeTab = document.querySelector('.tab-button.active');
             const fromDiscover = activeTab && activeTab.id === 'tab-discover';
             const discoverSection = document.getElementById('discoverSection');
@@ -737,7 +1183,7 @@
                         document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
                         return;
                     }
-                    
+
                     // Display playlist header
                     const header = document.getElementById('playlistDetailHeader');
                     header.innerHTML = `
@@ -748,13 +1194,13 @@
                             <p>By ${data.owner} • ${data.tracks_count} tracks</p>
                         </div>
                     `;
-                    
+
                     // Display action buttons
                     const actions = document.getElementById('playlistDetailActions');
                     actions.innerHTML = `
                         <button class="btn" onclick="playPlaylist('${data.id}')">▶ Play</button>
                     `;
-                    
+
                     // Display tracks
                     const tracksList = document.getElementById('tracksList');
                     if (data.tracks.length === 0) {
@@ -775,7 +1221,10 @@
                                                 <div class="track-name">${track.name}</div>
                                                 <div class="track-artist">${track.artists.join(', ')}</div>
                                             </div>
-                                            <div class="track-duration">${durationStr}</div>
+                                            <div class="track-actions-col">
+                                                <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-playlist-id="${data.id}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                                <div class="track-duration">${durationStr}</div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -787,19 +1236,19 @@
                     document.getElementById('statusIndicator').textContent = 'Error loading playlist';
                 });
         }
-        
+
         function backFromDetail() {
             const playlistsSection = document.getElementById('playlistsSection');
             const albumsSection = document.getElementById('albumsSection');
             const playlistDetailView = document.getElementById('playlistDetailView');
-            
+
             if (!playlistDetailView) {
                 console.error('Required elements not found');
                 return;
             }
-            
+
             playlistDetailView.style.display = 'none';
-            
+
             // Show the section we came from (playlists, albums, or discover)
             if (detailViewSource === 'playlists' && playlistsSection) {
                 playlistsSection.style.removeProperty('display');
@@ -811,19 +1260,19 @@
             }
             detailViewSource = null;
         }
-        
+
         let allAlbums = [];
         let originalAlbumsOrder = [];
         let albumsOffset = 0;
         let albumsHasMore = false;
-        
+
         function loadAlbums(reset = false) {
             if (reset) {
                 allAlbums = [];
                 originalAlbumsOrder = [];
                 albumsOffset = 0;
             }
-            
+
             fetch(`/albums/?offset=${albumsOffset}&limit=50`)
                 .then(response => response.json())
                 .then(data => {
@@ -831,14 +1280,14 @@
                         document.getElementById('albumsGrid').innerHTML = '<div style="text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
                         return;
                     }
-                    
+
                     allAlbums = allAlbums.concat(data.albums);
                     originalAlbumsOrder = originalAlbumsOrder.concat(data.albums);
                     albumsHasMore = data.has_more;
                     albumsOffset += data.albums.length;
-                    
+
                     displayAlbums(allAlbums);
-                    
+
                     // Show/hide load more button
                     const loadMoreBtn = document.getElementById('loadMoreAlbums');
                     if (loadMoreBtn) {
@@ -849,14 +1298,14 @@
                     document.getElementById('albumsGrid').innerHTML = '<div style="text-align: center; padding: 20px;">Error loading albums</div>';
                 });
         }
-        
+
         function displayAlbums(albums) {
             const grid = document.getElementById('albumsGrid');
             if (albums.length === 0) {
                 grid.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No albums found</div>';
                 return;
             }
-            
+
             grid.innerHTML = albums.map(album => {
                 return `
                     <div class="album-item" onclick="viewAlbum('${album.id}')">
@@ -867,17 +1316,17 @@
                 `;
             }).join('');
         }
-        
+
         function viewAlbum(albumId) {
             // Hide albums section, show detail view
             const albumsSection = document.getElementById('albumsSection');
             const playlistDetailView = document.getElementById('playlistDetailView');
-            
+
             if (!albumsSection || !playlistDetailView) {
                 console.error('Required elements not found');
                 return;
             }
-            
+
             const activeTab = document.querySelector('.tab-button.active');
             const fromDiscover = activeTab && activeTab.id === 'tab-discover';
             const discoverSection = document.getElementById('discoverSection');
@@ -902,7 +1351,7 @@
                         document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
                         return;
                     }
-                    
+
                     // Display album header
                     const header = document.getElementById('playlistDetailHeader');
                     header.innerHTML = `
@@ -913,13 +1362,13 @@
                             <p>${data.release_date || 'Unknown date'} • ${data.total_tracks} tracks</p>
                         </div>
                     `;
-                    
+
                     // Display action buttons
                     const actions = document.getElementById('playlistDetailActions');
                     actions.innerHTML = `
                         <button class="btn" onclick="playAlbum('${data.id}')">▶ Play</button>
                     `;
-                    
+
                     // Display tracks
                     const tracksList = document.getElementById('tracksList');
                     if (data.tracks.length === 0) {
@@ -940,7 +1389,10 @@
                                                 <div class="track-name">${track.name}</div>
                                                 <div class="track-artist">${track.artists.join(', ')}</div>
                                             </div>
-                                            <div class="track-duration">${durationStr}</div>
+                                            <div class="track-actions-col">
+                                                <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                                <div class="track-duration">${durationStr}</div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -952,7 +1404,7 @@
                     document.getElementById('statusIndicator').textContent = 'Error loading album';
                 });
         }
-        
+
         function playAlbum(albumId) {
             if (useWebPlayer && deviceId) {
                 fetch(`/play-album/?id=${albumId}&device_id=${deviceId}`, { method: 'POST' })
@@ -982,17 +1434,17 @@
                     });
             }
         }
-        
+
         let allSongs = [];
         let songsOffset = 0;
         let songsHasMore = false;
-        
+
         function loadSongs(reset = false) {
             if (reset) {
                 allSongs = [];
                 songsOffset = 0;
             }
-            
+
             fetch(`/saved-tracks/?offset=${songsOffset}&limit=50`)
                 .then(response => response.json())
                 .then(data => {
@@ -1000,13 +1452,13 @@
                         document.getElementById('songsList').innerHTML = '<div style="text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
                         return;
                     }
-                    
+
                     allSongs = allSongs.concat(data.tracks);
                     songsHasMore = data.has_more;
                     songsOffset += data.tracks.length;
-                    
+
                     displaySongs(allSongs);
-                    
+
                     // Show/hide load more button
                     const loadMoreBtn = document.getElementById('loadMoreSongs');
                     if (loadMoreBtn) {
@@ -1017,14 +1469,14 @@
                     document.getElementById('songsList').innerHTML = '<div style="text-align: center; padding: 20px;">Error loading songs</div>';
                 });
         }
-        
+
         function displaySongs(songs) {
             const list = document.getElementById('songsList');
             if (songs.length === 0) {
                 list.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No saved songs found</div>';
                 return;
             }
-            
+
             list.innerHTML = songs.map((track, index) => {
                 const duration = Math.floor(track.duration_ms / 1000);
                 const minutes = Math.floor(duration / 60);
@@ -1040,14 +1492,17 @@
                                     <div class="track-name">${track.name}</div>
                                     <div class="track-artist">${track.artists.join(', ')} • ${track.album}</div>
                                 </div>
-                                <div class="track-duration">${durationStr}</div>
+                                <div class="track-actions-col">
+                                    <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                    <div class="track-duration">${durationStr}</div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 `;
             }).join('');
         }
-        
+
         function switchTab(tabName) {
             // 1) Close detail view and restore list sections so tab content shows inside the tab area
             const playlistDetailView = document.getElementById('playlistDetailView');
@@ -1083,15 +1538,15 @@
                 loadDiscover(true);
             }
         }
-        
+
         function loadDiscover(reset = false) {
             const contentDiv = document.getElementById('discoverContent');
             if (!contentDiv) return;
-            
+
             if (reset) {
                 contentDiv.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">Loading discoveries...</div>';
             }
-            
+
             fetch('/discover/')
                 .then(response => response.json())
                 .then(data => {
@@ -1099,20 +1554,20 @@
                         contentDiv.innerHTML = '<div style="text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
                         return;
                     }
-                    
+
                     displayDiscover(data);
                 })
                 .catch(error => {
                     contentDiv.innerHTML = '<div style="text-align: center; padding: 20px;">Error loading discoveries</div>';
                 });
         }
-        
+
         function displayDiscover(data) {
             const contentDiv = document.getElementById('discoverContent');
             if (!contentDiv) return;
-            
+
             let html = '<div class="discover-content">';
-            
+
             // Display Playlists
             if (data.playlists && data.playlists.length > 0) {
                 html += '<div class="discover-section-group">';
@@ -1129,7 +1584,7 @@
                 });
                 html += '</div></div>';
             }
-            
+
             // Display Albums
             if (data.albums && data.albums.length > 0) {
                 html += '<div class="discover-section-group">';
@@ -1146,7 +1601,7 @@
                 });
                 html += '</div></div>';
             }
-            
+
             // Display Tracks
             if (data.tracks && data.tracks.length > 0) {
                 html += '<div class="discover-section-group">';
@@ -1167,7 +1622,10 @@
                                         <div class="discover-track-name">${track.name}</div>
                                         <div class="discover-track-artist">${track.artists.join(', ')} • ${track.album}</div>
                                     </div>
-                                    <div style="color: #1a1a1a; font-size: 0.85rem;">${durationStr}</div>
+                                    <div class="track-actions-col">
+                                        <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                        <div style="color: #1a1a1a; font-size: 0.85rem;">${durationStr}</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1175,20 +1633,20 @@
                 });
                 html += '</div></div>';
             }
-            
+
             html += '</div>';
             contentDiv.innerHTML = html;
         }
-        
+
         function sortPlaylists(sortType) {
             currentSort = sortType;
-            
+
             // Update active button
             document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById(`sort-${sortType}`).classList.add('active');
-            
+
             let sorted = [...allPlaylists];
-            
+
             if (sortType === 'default') {
                 // Default: keep original order from Spotify API (matches phone)
                 // Use the original order stored when playlists were loaded
@@ -1198,10 +1656,10 @@
             } else if (sortType === 'tracks') {
                 sorted.sort((a, b) => b.tracks_count - a.tracks_count);
             }
-            
+
             displayPlaylists(sorted);
         }
-        
+
         function playPlaylist(playlistId) {
             if (useWebPlayer && deviceId) {
                 fetch(`/play-playlist/?id=${playlistId}&device_id=${deviceId}`, { method: 'POST' })
@@ -1231,11 +1689,12 @@
                     });
             }
         }
-        
+
         // Load playlists when page loads
         window.addEventListener('load', () => {
             loadPlaylists(true);
         });
     </script>
 </body>
+
 </html>

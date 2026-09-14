@@ -3,8 +3,11 @@ Custom Spotify API client - handles authentication and API requests directly.
 """
 import requests
 import time
+import logging
 from django.conf import settings
 from urllib.parse import urlencode
+
+logger = logging.getLogger(__name__)
 
 
 class SpotifyAPI:
@@ -256,7 +259,7 @@ class SpotifyAPI:
         }
         return self.put('me/player', json=data)
     
-    def start_playback(self, device_id=None, context_uri=None, uris=None, offset=None):
+    def start_playback(self, device_id=None, context_uri=None, uris=None, offset=None, position_ms=None):
         """
         Start playback.
         
@@ -265,6 +268,9 @@ class SpotifyAPI:
             context_uri: URI of context to play (album, playlist, etc.)
             uris: List of track URIs to play
             offset: Offset for context (dict with 'position' or 'uri')
+            position_ms: Optional starting position in ms - used when
+                explicitly resuming a track/episode at the point it was
+                at before a device transfer (see transfer_with_resume)
         
         Returns:
             Response object
@@ -276,12 +282,30 @@ class SpotifyAPI:
             data['uris'] = uris
         if offset:
             data['offset'] = offset
+        if position_ms is not None:
+            data['position_ms'] = position_ms
         
         params = {}
         if device_id:
             params['device_id'] = device_id
         
         return self.put('me/player/play', json=data, params=params)
+
+    def seek_playback(self, position_ms, device_id=None):
+        """
+        Seek to a position in the currently playing track/episode.
+
+        Args:
+            position_ms: Position in milliseconds to seek to
+            device_id: Optional device ID
+
+        Returns:
+            Response object
+        """
+        params = {'position_ms': max(0, int(position_ms))}
+        if device_id:
+            params['device_id'] = device_id
+        return self.put('me/player/seek', params=params)
     
     def pause_playback(self, device_id=None):
         """
@@ -516,45 +540,225 @@ class SpotifyAPI:
         return self.get(f'playlists/{playlist_id}/tracks', params=params)
 
 
+def get_active_account(request):
+    """
+    Returns the SpotifyAccount currently active for this kiosk session,
+    or None if nothing is linked/selected yet. This only resolves which
+    row the session points at - it doesn't touch tokens (see
+    get_spotify_api for that).
+    """
+    from .models import SpotifyAccount
+
+    account_id = request.session.get('active_account_id')
+    if not account_id:
+        return None
+    try:
+        return SpotifyAccount.objects.get(id=account_id)
+    except SpotifyAccount.DoesNotExist:
+        # Session pointed at an account that's since been removed.
+        request.session.pop('active_account_id', None)
+        return None
+
+
 def get_spotify_api(request):
     """
-    Get SpotifyAPI instance from session token info.
-    Handles token refresh if needed.
-    
-    Args:
-        request: Django request object
-    
-    Returns:
-        SpotifyAPI instance or None if not authenticated
+    Get a SpotifyAPI instance for the currently active LINKED ACCOUNT
+    (not just whatever was last in the session), refreshing its token
+    if needed and persisting the refresh back to that account's DB row.
+    Persisting to the row (not only the session) is what lets switching
+    between linked accounts, or restarting the server, keep working
+    without re-running the OAuth flow each time.
+
+    Returns None if there's no active account, or if its refresh token
+    has stopped working (revoked/expired). In that case the account
+    stays linked - it still shows up in the switcher - but is cleared
+    as "active" so the UI can prompt to specifically reconnect it,
+    rather than silently losing track of which account was in use.
     """
-    token_info = request.session.get('token_info', None)
-    
-    if not token_info:
+    account = get_active_account(request)
+    if not account:
         return None
-    
+
     api = SpotifyAPI()
-    
-    # Check if token needs refresh
+    token_info = account.to_token_info()
+
     if api.is_token_expired(token_info):
         try:
-            refresh_token = token_info.get('refresh_token')
-            if not refresh_token:
-                return None
-            
-            # Refresh token
-            new_token_info = api.refresh_access_token(refresh_token)
-            
-            # Update session
-            request.session['token_info'] = new_token_info
-            request.session.save()
-            
+            new_token_info = api.refresh_access_token(account.refresh_token)
+            account.update_from_token_info(new_token_info)
+            account.save()
             token_info = new_token_info
-        except Exception as e:
-            # Token refresh failed, clear session
-            request.session.pop('token_info', None)
+        except Exception:
+            logger.warning("get_spotify_api: refresh failed for account id=%s", account.id, exc_info=True)
+            request.session.pop('active_account_id', None)
             return None
-    
-    # Create API instance with access token
+
     api.access_token = token_info['access_token']
+    api.account_id = account.id  # lets callers know which account served this request
     return api
 
+
+def fetch_spotify_profile(api):
+    """
+    GET /me for the account behind this SpotifyAPI instance. Used right
+    after OAuth to identify which Spotify account was just authorized,
+    so it can be linked (or matched to an existing linked account).
+    """
+    response = api.get('me')
+    response.raise_for_status()
+    return response.json()
+
+
+def link_or_update_account(token_info, profile):
+    """
+    Create a SpotifyAccount for a newly-authorized Spotify user, or
+    update the existing row if this Spotify account was already linked
+    on this device before - re-authenticating a previously-linked
+    account refreshes its stored tokens/profile instead of creating a
+    duplicate.
+
+    Returns the SpotifyAccount.
+    """
+    from .models import SpotifyAccount
+
+    spotify_user_id = profile['id']
+    images = profile.get('images') or []
+
+    account, _created = SpotifyAccount.objects.update_or_create(
+        spotify_user_id=spotify_user_id,
+        defaults={
+            'display_name': profile.get('display_name') or spotify_user_id,
+            'email': profile.get('email', '') or '',
+            'avatar_url': images[0]['url'] if images else '',
+            'access_token': token_info['access_token'],
+            'refresh_token': token_info['refresh_token'],
+            'token_expires_at': token_info['expires_at'],
+        },
+    )
+    return account
+
+
+def capture_playback_snapshot(api):
+    """
+    Snapshot of what's currently playing (track/episode uri, context,
+    progress, play state). Used to explicitly resume playback on a new
+    device after a transfer, rather than hoping Spotify carries it over
+    on its own.
+
+    Returns None if nothing is playing or the snapshot can't be read -
+    callers should treat that as "nothing to resume".
+    """
+    try:
+        response = api.get_current_playback(additional_types='track,episode')
+        if response.status_code == 204:
+            return None
+        response.raise_for_status()
+        data = response.json()
+    except Exception:
+        logger.warning("capture_playback_snapshot: could not read current playback", exc_info=True)
+        return None
+
+    item = data.get('item')
+    if not item:
+        return None
+
+    return {
+        'is_playing': data.get('is_playing', False),
+        'progress_ms': data.get('progress_ms', 0),
+        'item_uri': item.get('uri'),
+        'context_uri': (data.get('context') or {}).get('uri'),
+    }
+
+
+def transfer_with_resume(api, device_id, snapshot, max_attempts=4, poll_delay=0.6):
+    """
+    Transfer playback to device_id and verify it actually resumes
+    there. Fixes the case where transfer_playback() succeeds but the
+    new device sits transferred-and-silent instead of continuing
+    playback (GitHub issue #3).
+
+    Args:
+        api: SpotifyAPI instance
+        device_id: target device to transfer to
+        snapshot: result of capture_playback_snapshot() taken BEFORE
+            the transfer (or None if nothing was playing)
+        max_attempts: how many times to poll for confirmation before
+            falling back to an explicit restart
+        poll_delay: seconds between polls
+
+    Returns:
+        dict: {
+            'success': bool,
+            'message': str,
+            'resumed': bool,       # True if target device ended up playing
+            'used_fallback': bool, # True if we had to explicitly restart
+        }
+    """
+    was_playing = bool(snapshot and snapshot.get('is_playing'))
+
+    # force_play mirrors what was happening before the transfer: don't
+    # force a paused session to start playing, and do keep a playing
+    # session playing.
+    api.transfer_playback(device_id=device_id, force_play=was_playing)
+
+    if not was_playing:
+        return {
+            'success': True,
+            'message': 'Transferred (nothing was playing).',
+            'resumed': False,
+            'used_fallback': False,
+        }
+
+    # Poll to see if the target device actually picked up playback on
+    # its own before we resort to an explicit restart.
+    for _ in range(max_attempts):
+        time.sleep(poll_delay)
+        try:
+            response = api.get_current_playback()
+            if response.status_code == 200:
+                data = response.json()
+                active_device_id = (data.get('device') or {}).get('id')
+                if data.get('is_playing') and active_device_id == device_id:
+                    return {
+                        'success': True,
+                        'message': 'Transferred and resumed.',
+                        'resumed': True,
+                        'used_fallback': False,
+                    }
+        except Exception:
+            logger.warning("transfer_with_resume: poll failed", exc_info=True)
+
+    # Transfer didn't bring playback with it - explicitly restart at
+    # the exact track/episode and position instead of leaving the
+    # device transferred but silent.
+    try:
+        if snapshot.get('context_uri') and snapshot.get('item_uri'):
+            api.start_playback(
+                device_id=device_id,
+                context_uri=snapshot['context_uri'],
+                offset={'uri': snapshot['item_uri']},
+                position_ms=snapshot.get('progress_ms', 0),
+            )
+        elif snapshot.get('item_uri'):
+            api.start_playback(
+                device_id=device_id,
+                uris=[snapshot['item_uri']],
+                position_ms=snapshot.get('progress_ms', 0),
+            )
+        else:
+            api.start_playback(device_id=device_id)
+
+        return {
+            'success': True,
+            'message': 'Transferred; explicitly resumed playback at the same position.',
+            'resumed': True,
+            'used_fallback': True,
+        }
+    except Exception as e:
+        logger.warning("transfer_with_resume: fallback restart failed", exc_info=True)
+        return {
+            'success': False,
+            'message': f'Transferred but could not resume playback: {e}',
+            'resumed': False,
+            'used_fallback': True,
+        }
