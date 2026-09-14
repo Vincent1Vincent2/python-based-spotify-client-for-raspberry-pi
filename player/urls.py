@@ -7,6 +7,9 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('callback/', views.callback, name='callback'),
     path('token/', views.token, name='token'),
+    path('accounts/', views.accounts_view, name='accounts'),
+    path('accounts/switch/', views.switch_account_view, name='switch_account'),
+    path('accounts/remove/', views.remove_account_view, name='remove_account'),
     path('search/', views.search, name='search'),
     path('devices/', views.devices, name='devices'),
     path('current-playback/', views.current_playback, name='current_playback'),
@@ -16,6 +19,7 @@ urlpatterns = [
     path('pause/', views.pause, name='pause'),
     path('next/', views.next_track, name='next'),
     path('previous/', views.previous_track, name='previous'),
+    path('seek/', views.seek, name='seek'),
     path('queue/', views.queue_track, name='queue'),
     path('play-track/', views.play_track, name='play_track'),
     path('playlists/', views.playlists, name='playlists'),
@@ -30,4 +34,3 @@ urlpatterns = [
     path('settings/audio/', views.update_audio_settings, name='update_audio_settings'),
     path('settings/reboot/', views.reboot_system, name='reboot_system'),
 ]
-

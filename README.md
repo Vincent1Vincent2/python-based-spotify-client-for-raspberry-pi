@@ -110,6 +110,7 @@ python manage.py collectstatic --noinput
 #### 5. Start the Server
 
 **Development:**
+
 ```bash
 python manage.py runserver 0.0.0.0:8000
 ```
@@ -136,6 +137,7 @@ WantedBy=multi-user.target
 ```
 
 Enable and start:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable spotipi.service
@@ -145,11 +147,13 @@ sudo systemctl start spotipi.service
 #### 6. Access the Client
 
 **Local Display (Auto-Launch):**
+
 - On boot, the browser automatically launches in kiosk mode on the Pi's screen
 - Perfect for dedicated music players with their own display
 - See `LOCAL_DISPLAY_SETUP.md` for details
 
 **Network Access:**
+
 - Open browser and go to:
   - Local: `http://127.0.0.1:8000`
   - From another device: `http://<pi-ip-address>:8000`
@@ -183,6 +187,7 @@ The first-boot setup wizard provides a complete configuration experience:
      - Allo Boss2 DAC
 
 The wizard automatically configures:
+
 - `/etc/wpa_supplicant/wpa_supplicant.conf` (WiFi)
 - `/boot/config.txt` (Audio output/I2S DACs)
 - `/etc/spotipi/spotipi.conf` (App configuration)
@@ -192,7 +197,7 @@ The wizard automatically configures:
 
 1. **Login**: Click the login button to authenticate with Spotify
 2. **Control Playback**: Use Play/Pause, Previous, and Next buttons
-3. **Browse Content**: 
+3. **Browse Content**:
    - **Playlists**: Browse and play your playlists
    - **Albums**: Browse and play your saved albums
    - **Songs**: Browse and play your saved tracks
@@ -223,7 +228,7 @@ The setup wizard automatically configures your Raspberry Pi's audio output by mo
 
 ```
 spotipy/
-├── player/              # Main Django app
+├── player/             # Main Django app
 │   ├── static/         # CSS files (variables, base, player, login)
 │   ├── templates/      # HTML templates
 │   ├── spotify_api.py  # Custom Spotify API client
@@ -244,8 +249,6 @@ spotipy/
 ## Creating an OS Image
 
 To create a custom Raspberry Pi OS image with SpotiPi pre-installed:
-
-**Quick Answer:** Yes, you need to install regular Raspberry Pi OS first, then install the app, and finally create an image from that SD card.
 
 **Detailed Process:**
 

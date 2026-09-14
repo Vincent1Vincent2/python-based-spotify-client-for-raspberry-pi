@@ -1,32 +1,19 @@
 """
 Audio configuration module for Raspberry Pi I2S DAC setup.
-Handles configuration of /boot/firmware/config.txt for various I2S DACs.
+Handles configuration of /boot/firmware/config.txt (or its dev-mode
+mock equivalent) for various I2S DACs.
 """
 import os
 import re
 import shutil
 import subprocess
-from pathlib import Path
-from dotenv import load_dotenv
-from pathlib import Path
 
-# Load environment variables
-# Try to find .env file in the project root (parent of wizard directory)
-env_path = Path(__file__).resolve().parent.parent / '.env'
-if env_path.exists():
-    load_dotenv(dotenv_path=env_path, override=True)
-else:
-    # Fallback to default behavior (search current directory and parents)
-    load_dotenv()
+from spotify_client import config_store
 
-BOOT_CONFIG_PATH = "/boot/firmware/config.txt"
-BOOT_CONFIG_BACKUP = "/boot/firmware/config.txt.spotipi.backup"
-
-# Mapping of audio output options to their dtoverlay configurations
 AUDIO_OPTIONS = {
     "analog": {
         "name": "3.5mm Analog Jack",
-        "dtoverlay": None,  # Default/remove I2S overlays
+        "dtoverlay": None,
         "description": "Built-in 3.5mm audio jack"
     },
     "hifiberry-dac": {
@@ -76,7 +63,7 @@ AUDIO_OPTIONS = {
     }
 }
 
-# Common I2S overlay patterns to remove
+# Common I2S overlay patterns to remove before adding the new selection
 I2S_OVERLAY_PATTERNS = [
     r"dtoverlay\s*=\s*hifiberry-.*",
     r"dtoverlay\s*=\s*iqaudio-.*",
@@ -85,233 +72,182 @@ I2S_OVERLAY_PATTERNS = [
     r"dtoverlay\s*=\s*i2s-mmap",
 ]
 
+
+def get_boot_config_path():
+    """
+    Real path on the Pi, or a local mock file in dev mode. Using a real
+    (if fake) file in dev mode means the line-rewriting logic below
+    actually runs and can be inspected/tested locally, instead of the
+    old behavior of silently no-op'ing whenever config.txt wasn't
+    found.
+    """
+    if config_store.get_env_mode() == "pi":
+        return "/boot/firmware/config.txt"
+    return str(config_store.get_config_dir() / "mock_boot_config.txt")
+
+
+def get_boot_config_backup_path():
+    return get_boot_config_path() + ".spotipi.backup"
+
+
 def backup_config():
-    """Create a backup of /boot/firmware/config.txt if it doesn't exist."""
-    if os.path.exists(BOOT_CONFIG_PATH) and not os.path.exists(BOOT_CONFIG_BACKUP):
+    """Create a one-time backup of the boot config before we ever touch it."""
+    boot_path = get_boot_config_path()
+    backup_path = get_boot_config_backup_path()
+
+    if os.path.exists(boot_path) and not os.path.exists(backup_path):
         try:
-            shutil.copy2(BOOT_CONFIG_PATH, BOOT_CONFIG_BACKUP)
+            shutil.copy2(boot_path, backup_path)
         except (PermissionError, IOError):
-            # Try with sudo
-            try:
-                result = subprocess.run(
-                    ['sudo', 'cp', BOOT_CONFIG_PATH, BOOT_CONFIG_BACKUP],
-                    capture_output=True,
-                    check=True
-                )
-            except (subprocess.CalledProcessError, FileNotFoundError) as e:
-                raise PermissionError(f"Cannot backup {BOOT_CONFIG_PATH}: {e}")
+            result = subprocess.run(
+                ["sudo", "cp", boot_path, backup_path],
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                raise PermissionError(f"Cannot backup {boot_path}: {result.stderr.decode(errors='ignore')}")
+
 
 def read_config():
-    """Read /boot/firmware/config.txt content."""
-    if not os.path.exists(BOOT_CONFIG_PATH):
-        raise FileNotFoundError(f"{BOOT_CONFIG_PATH} not found")
-    
+    """Read the boot config file content. In dev mode, a missing mock
+    file is treated as an empty starting point rather than an error."""
+    boot_path = get_boot_config_path()
+
+    if not os.path.exists(boot_path):
+        if config_store.get_env_mode() == "dev":
+            return ""
+        raise FileNotFoundError(f"{boot_path} not found")
+
     try:
-        with open(BOOT_CONFIG_PATH, 'r') as f:
+        with open(boot_path, "r") as f:
             return f.read()
     except (PermissionError, IOError):
-        # Try with sudo
-        try:
-            result = subprocess.run(
-                ['sudo', 'cat', BOOT_CONFIG_PATH],
-                capture_output=True,
-                check=True,
-                text=True
-            )
-            return result.stdout
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            raise PermissionError(f"Cannot read {BOOT_CONFIG_PATH}: {e}")
+        result = subprocess.run(
+            ["sudo", "cat", boot_path],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise PermissionError(f"Cannot read {boot_path}: {result.stderr}")
+        return result.stdout
+
 
 def write_config(content):
-    """Write content to /boot/firmware/config.txt."""
+    """Write content to the boot config file (real path or dev mock)."""
+    boot_path = get_boot_config_path()
+
     try:
-        with open(BOOT_CONFIG_PATH, 'w') as f:
+        os.makedirs(os.path.dirname(boot_path), exist_ok=True)
+    except (PermissionError, FileNotFoundError):
+        pass
+
+    try:
+        with open(boot_path, "w") as f:
             f.write(content)
     except (PermissionError, IOError):
-        # Try with sudo using tee
-        try:
-            result = subprocess.run(
-                ['sudo', 'tee', BOOT_CONFIG_PATH],
-                input=content.encode('utf-8'),
-                capture_output=True,
-                check=True
-            )
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            raise PermissionError(f"Cannot write to {BOOT_CONFIG_PATH}: {e}")
+        result = subprocess.run(
+            ["sudo", "tee", boot_path],
+            input=content.encode("utf-8"),
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise PermissionError(f"Cannot write to {boot_path}: {result.stderr.decode(errors='ignore')}")
+
 
 def remove_i2s_overlays(lines):
     """Remove all I2S-related dtoverlay entries from config lines."""
     new_lines = []
     for line in lines:
-        # Check if line matches any I2S overlay pattern
-        is_i2s_overlay = False
-        for pattern in I2S_OVERLAY_PATTERNS:
-            if re.match(pattern, line.strip(), re.IGNORECASE):
-                is_i2s_overlay = True
-                break
-        
+        is_i2s_overlay = any(
+            re.match(pattern, line.strip(), re.IGNORECASE)
+            for pattern in I2S_OVERLAY_PATTERNS
+        )
         if not is_i2s_overlay:
             new_lines.append(line)
-    
     return new_lines
 
-def _parse_bool_env(env_var, default=False):
-    """Parse boolean environment variable (accepts true/false, on/off, 1/0)."""
-    value = os.getenv(env_var, '').lower().strip()
-    if value in ('true', 'on', '1', 'yes'):
-        return True
-    elif value in ('false', 'off', '0', 'no', ''):
-        return False
-    return default
 
 def configure_audio_output(audio_option):
     """
-    Configure Raspberry Pi audio output by modifying /boot/firmware/config.txt.
-    Reads environment variables from .env file and applies them to config.txt.
-    
-    Environment variables (from .env):
-    - I2C_ARM_ENABLED: Enable/disable i2c_arm (true/false, on/off)
-    - I2S_ENABLED: Enable/disable i2s (true/false, on/off)
-    - SPI_ENABLED: Enable/disable spi (true/false, on/off)
-    - AUDIO_ENABLED: Enable/disable onboard audio (true/false, on/off)
-    - DTOVERLAY: Device tree overlay for I2S DAC (e.g., hifiberry-dac)
-    
+    Configure Raspberry Pi audio output by modifying the boot config
+    file (real /boot/firmware/config.txt on the Pi, a local mock file
+    in dev mode).
+
+    Hardware interface flags (i2c_arm, i2s, spi) now come from the
+    consolidated config store instead of .env - see
+    spotify_client/config_store.py.
+
     Args:
-        audio_option: Key from AUDIO_OPTIONS (e.g., 'hifiberry-dac', 'analog', etc.)
-                     If DTOVERLAY is set in .env, audio_option can be any valid dtoverlay value
-    
+        audio_option: Key from AUDIO_OPTIONS, or any custom dtoverlay
+                      string if it isn't one of the known keys (kept
+                      for boards not in the preset list).
+
     Returns:
         tuple: (success: bool, message: str)
     """
-    # Check if DTOVERLAY is set in environment - if so, allow any audio_option
-    dtoverlay_from_env = os.getenv("DTOVERLAY", "").strip()
-    if dtoverlay_from_env and dtoverlay_from_env != "none":
-        # DTOVERLAY is set, so audio_option can be the dtoverlay value itself
-        # Use a default audio config if the option isn't in AUDIO_OPTIONS
-        if audio_option not in AUDIO_OPTIONS:
-            # Create a temporary config for this dtoverlay value
-            audio_config = {
-                "name": f"Custom DAC ({audio_option})",
-                "dtoverlay": audio_option,
-                "description": f"Custom I2S DAC: {audio_option}"
-            }
-        else:
-            audio_config = AUDIO_OPTIONS[audio_option]
-    elif audio_option not in AUDIO_OPTIONS:
-        return False, f"Unknown audio option: {audio_option}"
-    else:
+    if audio_option in AUDIO_OPTIONS:
         audio_config = AUDIO_OPTIONS[audio_option]
-    
-    # Skip configuration on non-Raspberry Pi systems (for development)
-    if not os.path.exists(BOOT_CONFIG_PATH):
-        option_name = audio_config.get('name', audio_option)
-        return True, f"Audio option '{option_name}' selected (config.txt not found, skipping)"
-    
+    else:
+        audio_config = {
+            "name": f"Custom DAC ({audio_option})",
+            "dtoverlay": audio_option,
+            "description": f"Custom I2S DAC: {audio_option}",
+        }
+
     try:
-        # Backup config file
         backup_config()
-        
-        # Read current config
+
         config_content = read_config()
-        lines = config_content.split('\n')
-        
-        # Remove all I2S overlays first (we'll add the correct one later)
+        lines = config_content.split("\n")
+
         lines = remove_i2s_overlays(lines)
-        
-        # Get the selected audio option configuration (already set above if DTOVERLAY was checked)
-        if 'audio_config' not in locals():
-            audio_config = AUDIO_OPTIONS[audio_option]
-        dtoverlay_from_option = audio_config.get("dtoverlay")
-        
-        # Read environment variables (with fallback to audio_option if not set)
-        i2c_enabled = _parse_bool_env("I2C_ARM_ENABLED", default=True)
-        i2s_enabled = _parse_bool_env("I2S_ENABLED", default=True)
-        spi_enabled = _parse_bool_env("SPI_ENABLED", default=True)
-        
-        # DTOVERLAY from env takes precedence, otherwise use audio_option
-        dtoverlay_from_env = os.getenv("DTOVERLAY", "").strip()
-        if dtoverlay_from_env:
-            dtoverlay = dtoverlay_from_env
-        else:
-            dtoverlay = dtoverlay_from_option
-        
-        # AUDIO_ENABLED from env, but override logic: if I2S DAC is selected, disable onboard audio
-        audio_enabled_env = _parse_bool_env("AUDIO_ENABLED", default=None)
+
+        dtoverlay = audio_config.get("dtoverlay")
+
+        hardware = config_store.load_store().get("hardware", {})
+        i2c_enabled = bool(hardware.get("i2c_arm_enabled", True))
+        i2s_enabled = bool(hardware.get("i2s_enabled", True))
+        spi_enabled = bool(hardware.get("spi_enabled", True))
+
+        # Onboard audio: off when an I2S DAC is selected, on for analog,
+        # off for HDMI/anything else - same defaulting as before, just
+        # no env var escape hatch (not needed now the store holds it).
         if dtoverlay:
-            # I2S DAC selected: disable onboard audio (unless explicitly enabled in env)
-            audio_enabled = audio_enabled_env if audio_enabled_env is not None else False
+            audio_enabled = False
         elif audio_option == "analog":
-            # Analog selected: enable onboard audio (unless explicitly disabled in env)
-            audio_enabled = audio_enabled_env if audio_enabled_env is not None else True
+            audio_enabled = True
         else:
-            # HDMI or other: use env value or default to False
-            audio_enabled = audio_enabled_env if audio_enabled_env is not None else False
-        
-        # Process hardware interface parameters (i2c_arm, i2s, spi)
+            audio_enabled = False
+
         new_lines = []
         has_i2c = False
         has_i2s = False
         has_spi = False
-        
+
         for line in lines:
-            # Check for i2c_arm
-            if re.match(r"#?\s*dtparam\s*=\s*i2c_arm\s*=", line.strip(), re.IGNORECASE):
+            stripped = line.strip()
+            if re.match(r"#?\s*dtparam\s*=\s*i2c_arm\s*=", stripped, re.IGNORECASE):
                 has_i2c = True
-                if i2c_enabled:
-                    # Enable: uncomment and set to on
-                    new_lines.append("dtparam=i2c_arm=on")
-                else:
-                    # Disable: comment out
-                    if not line.strip().startswith('#'):
-                        new_lines.append('#' + line.lstrip())
-                    else:
-                        new_lines.append(line)
-            # Check for i2s
-            elif re.match(r"#?\s*dtparam\s*=\s*i2s\s*=", line.strip(), re.IGNORECASE):
+                new_lines.append("dtparam=i2c_arm=on" if i2c_enabled else _commented(line))
+            elif re.match(r"#?\s*dtparam\s*=\s*i2s\s*=", stripped, re.IGNORECASE):
                 has_i2s = True
-                if i2s_enabled:
-                    # Enable: uncomment and set to on
-                    new_lines.append("dtparam=i2s=on")
-                else:
-                    # Disable: comment out
-                    if not line.strip().startswith('#'):
-                        new_lines.append('#' + line.lstrip())
-                    else:
-                        new_lines.append(line)
-            # Check for spi
-            elif re.match(r"#?\s*dtparam\s*=\s*spi\s*=", line.strip(), re.IGNORECASE):
+                new_lines.append("dtparam=i2s=on" if i2s_enabled else _commented(line))
+            elif re.match(r"#?\s*dtparam\s*=\s*spi\s*=", stripped, re.IGNORECASE):
                 has_spi = True
-                if spi_enabled:
-                    # Enable: uncomment and set to on
-                    new_lines.append("dtparam=spi=on")
-                else:
-                    # Disable: comment out
-                    if not line.strip().startswith('#'):
-                        new_lines.append('#' + line.lstrip())
-                    else:
-                        new_lines.append(line)
-            # Check for audio parameter
-            elif re.match(r"#?\s*dtparam\s*=\s*audio\s*=", line.strip(), re.IGNORECASE):
-                if audio_enabled:
-                    # Enable: uncomment and set to on
-                    new_lines.append("dtparam=audio=on")
-                else:
-                    # Disable: comment out
-                    if not line.strip().startswith('#'):
-                        new_lines.append('#' + line.lstrip())
-                    else:
-                        new_lines.append(line)
+                new_lines.append("dtparam=spi=on" if spi_enabled else _commented(line))
+            elif re.match(r"#?\s*dtparam\s*=\s*audio\s*=", stripped, re.IGNORECASE):
+                new_lines.append("dtparam=audio=on" if audio_enabled else _commented(line))
             else:
                 new_lines.append(line)
-        
-        # Find insertion point for missing parameters (after comments, before other dtparam entries)
+
         insert_idx = len(new_lines)
         for i, line in enumerate(new_lines):
-            if re.match(r"dtparam\s*=", line.strip(), re.IGNORECASE) and not line.strip().startswith('#'):
+            if re.match(r"dtparam\s*=", line.strip(), re.IGNORECASE) and not line.strip().startswith("#"):
                 insert_idx = i
                 break
-        
-        # Add missing hardware interface parameters
+
         if not has_i2c and i2c_enabled:
             new_lines.insert(insert_idx, "dtparam=i2c_arm=on")
             insert_idx += 1
@@ -321,44 +257,44 @@ def configure_audio_output(audio_option):
         if not has_spi and spi_enabled:
             new_lines.insert(insert_idx, "dtparam=spi=on")
             insert_idx += 1
-        
-        # Add audio parameter if needed
-        audio_param_exists = any(re.match(r"#?\s*dtparam\s*=\s*audio\s*=", line.strip(), re.IGNORECASE) for line in new_lines)
-        if not audio_param_exists:
-            if audio_enabled:
-                # Find insertion point after hardware interfaces
-                insert_idx = len(new_lines)
-                for i, line in enumerate(new_lines):
-                    if re.match(r"dtparam\s*=\s*spi\s*=\s*on", line.strip(), re.IGNORECASE):
-                        insert_idx = i + 1
-                        break
-                new_lines.insert(insert_idx, "dtparam=audio=on")
-        
+
+        audio_param_exists = any(
+            re.match(r"#?\s*dtparam\s*=\s*audio\s*=", line.strip(), re.IGNORECASE)
+            for line in new_lines
+        )
+        if not audio_param_exists and audio_enabled:
+            insert_idx = len(new_lines)
+            for i, line in enumerate(new_lines):
+                if re.match(r"dtparam\s*=\s*spi\s*=\s*on", line.strip(), re.IGNORECASE):
+                    insert_idx = i + 1
+                    break
+            new_lines.insert(insert_idx, "dtparam=audio=on")
+
         lines = new_lines
-        
-        # Handle dtoverlay (I2S DAC)
+
+        lines = [line for line in lines if not re.match(r"dtoverlay\s*=", line.strip(), re.IGNORECASE)]
         if dtoverlay:
-            # Remove any existing dtoverlay entries first
-            lines = [line for line in lines if not re.match(r"dtoverlay\s*=", line.strip(), re.IGNORECASE)]
-            
-            # Add dtoverlay at the END of the file (after removing trailing empty lines)
-            while lines and lines[-1].strip() == '':
+            while lines and lines[-1].strip() == "":
                 lines.pop()
             lines.append(f"dtoverlay={dtoverlay}")
-        else:
-            # Remove any dtoverlay entries if no I2S DAC is selected
-            lines = [line for line in lines if not re.match(r"dtoverlay\s*=", line.strip(), re.IGNORECASE)]
-        
-        # Write modified config
-        new_content = '\n'.join(lines)
-        write_config(new_content)
-        
-        return True, f"Audio output configured: {audio_config['name']}. Reboot required for changes to take effect."
-    
+
+        write_config("\n".join(lines))
+
+        suffix = "" if config_store.get_env_mode() == "pi" else " (dev mode: written to mock config file)"
+        return True, f"Audio output configured: {audio_config['name']}. Reboot required for changes to take effect.{suffix}"
+
     except PermissionError as e:
-        return False, f"Permission denied: {e}. Ensure Django service has root/sudo permissions."
+        return False, f"Permission denied: {e}. Ensure the SpotiPi service has root/sudo permissions."
     except Exception as e:
         return False, f"Error configuring audio: {str(e)}"
+
+
+def _commented(line):
+    """Comment out a config line if it isn't already commented."""
+    if line.strip().startswith("#"):
+        return line
+    return "#" + line.lstrip()
+
 
 def get_audio_options():
     """Get list of available audio options for display."""
@@ -366,8 +302,7 @@ def get_audio_options():
         {
             "value": key,
             "name": value["name"],
-            "description": value["description"]
+            "description": value["description"],
         }
         for key, value in AUDIO_OPTIONS.items()
     ]
-

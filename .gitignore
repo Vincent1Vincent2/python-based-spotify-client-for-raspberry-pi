@@ -34,6 +34,10 @@ db.sqlite3-journal
 .env
 .cache
 
+# Local dev config store (SPOTIPI_ENV=dev) - holds Spotify credentials
+# and other settings written through config_store.py during local runs
+/devdata/
+
 # IDE
 .vscode/
 .idea/
@@ -44,4 +48,3 @@ db.sqlite3-journal
 # OS
 .DS_Store
 Thumbs.db
-

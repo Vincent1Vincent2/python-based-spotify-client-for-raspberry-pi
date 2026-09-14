@@ -6,7 +6,11 @@ from django.conf import settings
 import json
 import random
 import requests
-from .spotify_api import SpotifyAPI, get_spotify_api
+from .spotify_api import (
+    SpotifyAPI, get_spotify_api, capture_playback_snapshot, transfer_with_resume,
+    get_active_account, fetch_spotify_profile, link_or_update_account,
+)
+from .models import SpotifyAccount
 
 
 SPOTIFY_SCOPE = 'user-modify-playback-state user-read-playback-state user-read-currently-playing user-read-playback-position streaming playlist-read-private playlist-read-collaborative user-library-read'
@@ -28,9 +32,11 @@ def index(request):
     if not sp:
         return redirect('login')
     
+    accounts = list(SpotifyAccount.objects.all())
+    active_account = get_active_account(request)
+    
     try:
-        token_info = request.session.get('token_info', None)
-        access_token = token_info.get('access_token') if token_info else None
+        access_token = sp.access_token
         
         # Get available devices
         response = sp.get_devices()
@@ -76,6 +82,8 @@ def index(request):
             'devices': devices_list.get('devices', []),
             'selected_device_id': selected_device_id,
             'use_web_player': use_web_player,
+            'accounts': accounts,
+            'active_account': active_account,
         }
     except Exception as e:
         context = {
@@ -85,37 +93,50 @@ def index(request):
             'devices': [],
             'selected_device_id': None,
             'use_web_player': True,
+            'accounts': accounts,
+            'active_account': active_account,
         }
     
     return render(request, 'player/index.html', context)
 
 
 def login_view(request):
-    """Show login page or initiate Spotify OAuth login."""
+    """
+    Show login page or initiate Spotify OAuth login.
+    
+    Now also offers any accounts already linked on this device so they
+    can be reactivated without going through OAuth again - the "auth=1"
+    flow is specifically for linking a NEW account.
+    """
     # If already authenticated, redirect to index
     sp = get_spotify_client(request)
     if sp:
         return redirect('index')
     
-    # If 'auth' parameter is present, initiate OAuth flow
+    # If 'auth' parameter is present, initiate OAuth flow to link a new account
     if request.GET.get('auth') == '1':
-        # Use custom Spotify API client
         api = SpotifyAPI()
         auth_url = api.get_authorization_url(SPOTIFY_SCOPE)
         return redirect(auth_url)
     
-    # Otherwise show login page
-    return render(request, 'player/login.html')
+    accounts = SpotifyAccount.objects.all()
+    return render(request, 'player/login.html', {'accounts': accounts})
 
 
 def logout_view(request):
-    """Logout and clear session."""
+    """
+    Clear the active session (selected device, active account, etc).
+    This does NOT remove the linked account or its stored tokens - use
+    remove_account_view for that. Logging out just returns to the
+    account picker so a quick account switch doesn't need re-auth.
+    """
     request.session.flush()
     return redirect('login')
 
 
 def callback(request):
-    """Handle Spotify OAuth callback."""
+    """Handle Spotify OAuth callback - links (or re-links) the account
+    that was just authorized and makes it the active one."""
     code = request.GET.get('code')
     error = request.GET.get('error')
     
@@ -126,10 +147,14 @@ def callback(request):
         return render(request, 'player/error.html', {'error': 'No authorization code provided'})
     
     try:
-        # Use custom Spotify API client
         api = SpotifyAPI()
         token_info = api.get_access_token(code)
-        request.session['token_info'] = token_info
+        api.access_token = token_info['access_token']
+        
+        profile = fetch_spotify_profile(api)
+        account = link_or_update_account(token_info, profile)
+        
+        request.session['active_account_id'] = account.id
         request.session['use_web_player'] = True  # Default to web player
         
         return redirect('index')
@@ -141,40 +166,149 @@ def token(request):
     """Get access token for Web Playback SDK."""
     api = get_spotify_api(request)
     if not api:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
-    # Token is already refreshed in get_spotify_api()
-    token_info = request.session.get('token_info', None)
-    if not token_info:
-        return JsonResponse({'error': 'No token available'}, status=401)
+    # get_spotify_api() already refreshed and persisted the token if needed.
+    return JsonResponse({'access_token': api.access_token})
+
+
+def accounts_view(request):
+    """List linked accounts and which one is active, for the account switcher UI."""
+    active_account = get_active_account(request)
+    accounts = SpotifyAccount.objects.all()
+    return JsonResponse({
+        'active_account_id': active_account.id if active_account else None,
+        'accounts': [{
+            'id': acc.id,
+            'display_name': acc.display_name,
+            'avatar_url': acc.avatar_url,
+        } for acc in accounts],
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def switch_account_view(request):
+    """Switch the active account for this kiosk session to an
+    already-linked account - no OAuth needed since its tokens are
+    already stored."""
+    account_id = request.GET.get('id', '')
+    try:
+        account = SpotifyAccount.objects.get(id=int(account_id))
+    except (ValueError, SpotifyAccount.DoesNotExist):
+        return JsonResponse({'error': 'Account not found'}, status=404)
     
-    return JsonResponse({'access_token': token_info['access_token']})
+    # Playback/device session state belonged to whichever account was
+    # active before - it isn't meaningful for the new one.
+    for key in ('selected_device_id', 'use_web_player', 'manual_device_selection',
+                'web_player_device_id', 'last_known_playback'):
+        request.session.pop(key, None)
     
-    return JsonResponse({'access_token': token_info.get('access_token')})
+    request.session['active_account_id'] = account.id
+    request.session['use_web_player'] = True
+    request.session.save()
+    
+    return JsonResponse({'status': 'switched', 'account_id': account.id, 'display_name': account.display_name})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def remove_account_view(request):
+    """Fully unlink an account from this device, deleting its stored tokens."""
+    account_id = request.GET.get('id', '')
+    try:
+        account_id_int = int(account_id)
+        account = SpotifyAccount.objects.get(id=account_id_int)
+    except (ValueError, SpotifyAccount.DoesNotExist):
+        return JsonResponse({'error': 'Account not found'}, status=404)
+    
+    active_account = get_active_account(request)
+    account.delete()
+    
+    if active_account and active_account.id == account_id_int:
+        request.session.pop('active_account_id', None)
+    
+    return JsonResponse({'status': 'removed', 'account_id': account_id_int})
 
 
 def search(request):
-    """Search for tracks."""
+    """
+    Unified search across tracks, albums, artists, and playlists in one
+    call. "Singles" aren't a separate Spotify search category - they're
+    albums with album_type='single', so each album result includes
+    album_type for the frontend to label/filter them.
+
+    Query params:
+        q: search query (required)
+        type: comma-separated subset of track,album,artist,playlist
+              (default: all four)
+        limit: results per category (default 10, max 50 per Spotify's API)
+    """
     query = request.GET.get('q', '')
     if not query:
         return JsonResponse({'error': 'Query parameter required'}, status=400)
     
-    sp = get_spotify_client(request)
-    if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    type_param = request.GET.get('type', 'track,album,artist,playlist')
+    try:
+        limit = min(50, max(1, int(request.GET.get('limit', 10))))
+    except ValueError:
+        limit = 10
+    
+    api = get_spotify_client(request)
+    if not api:
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
-        response = sp.search(q=query, type='track', limit=10)
+        response = api.search(q=query, type=type_param, limit=limit)
         response.raise_for_status()
         results = response.json()
-        tracks = [{
-            'id': item['id'],
-            'name': item['name'],
-            'artists': [artist['name'] for artist in item['artists']],
-            'album': item['album']['name'],
-            'image': item['album']['images'][-1]['url'] if item['album']['images'] else None,
-        } for item in results['tracks']['items']]
-        return JsonResponse({'tracks': tracks})
+        
+        payload = {}
+        
+        if 'tracks' in results:
+            payload['tracks'] = [{
+                'id': item['id'],
+                'name': item['name'],
+                'artists': [artist['name'] for artist in item['artists']],
+                'album': item['album']['name'],
+                'image': item['album']['images'][-1]['url'] if item['album']['images'] else None,
+                'duration_ms': item.get('duration_ms', 0),
+                'uri': item['uri'],
+            } for item in results['tracks']['items'] if item]
+        
+        if 'albums' in results:
+            payload['albums'] = [{
+                'id': item['id'],
+                'name': item['name'],
+                'artists': [artist['name'] for artist in item['artists']],
+                'image': item['images'][0]['url'] if item['images'] else None,
+                'release_date': item.get('release_date', ''),
+                'total_tracks': item.get('total_tracks', 0),
+                'album_type': item.get('album_type', 'album'),  # 'album' | 'single' | 'compilation'
+            } for item in results['albums']['items'] if item]
+        
+        if 'artists' in results:
+            payload['artists'] = [{
+                'id': item['id'],
+                'name': item['name'],
+                'image': item['images'][0]['url'] if item.get('images') else None,
+                'genres': item.get('genres', []),
+                'followers': item.get('followers', {}).get('total', 0),
+            } for item in results['artists']['items'] if item]
+        
+        if 'playlists' in results:
+            payload['playlists'] = [{
+                'id': item['id'],
+                'name': item['name'],
+                'description': item.get('description', ''),
+                'image': item['images'][0]['url'] if item.get('images') else None,
+                'tracks_count': item['tracks']['total'],
+                'owner': item['owner']['display_name'] or item['owner']['id'],
+            } for item in results['playlists']['items'] if item]
+        
+        return JsonResponse(payload)
+    except requests.exceptions.RequestException as e:
+        return JsonResponse({'error': f'Request failed: {str(e)}'}, status=400)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
 
@@ -183,7 +317,7 @@ def devices(request):
     """Get available devices."""
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         response = sp.get_devices()
@@ -208,7 +342,7 @@ def current_playback(request):
     """
     api = get_spotify_api(request)
     if not api:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         # Use the official Spotify API endpoint with additional_types to include episodes
@@ -242,6 +376,19 @@ def current_playback(request):
         is_playing = playback.get('is_playing', False)
         device = playback.get('device', {})
         progress_ms = playback.get('progress_ms', 0)
+        
+        # Cache the last known context/item so play() can explicitly
+        # resume here if Spotify has already dropped the "resume"
+        # context entirely (e.g. right after a playlist finishes -
+        # GitHub issue #6). This is polled every few seconds from the
+        # frontend, so it stays fresh right up until playback stops.
+        context = playback.get('context') or {}
+        if item:
+            request.session['last_known_playback'] = {
+                'context_uri': context.get('uri'),
+                'item_uri': item.get('uri'),
+            }
+            request.session.save()
         
         # Process item if available
         if item:
@@ -323,38 +470,51 @@ def current_playback(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def transfer_device(request):
-    """Transfer playback to a specific device."""
+    """
+    Transfer playback to a specific device, and make sure it actually
+    starts playing there when something was already playing (previously
+    this only called transfer_playback(force_play=False), which often
+    left the new device transferred-but-silent - GitHub issue #3).
+    """
     device_id = request.GET.get('device_id', '')
     if not device_id:
         return JsonResponse({'error': 'Device ID required'}, status=400)
     
-    sp = get_spotify_client(request)
-    if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    api = get_spotify_client(request)
+    if not api:
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         # Verify device exists and is available
-        response = sp.get_devices()
+        response = api.get_devices()
         response.raise_for_status()
         devices_list = response.json()
-        device_found = False
-        for device in devices_list.get('devices', []):
-            if device['id'] == device_id:
-                device_found = True
-                break
+        device_found = any(d['id'] == device_id for d in devices_list.get('devices', []))
         
         if not device_found:
-            return JsonResponse({'error': 'Device not found or not available'}, status=404)
+            return JsonResponse({'error': 'Device not found or not available', 'code': 'device_unreachable'}, status=404)
         
-        # Transfer playback to this device
-        sp.transfer_playback(device_id=device_id, force_play=False)
+        # Snapshot what's playing BEFORE transferring, so we can force a
+        # resume at the same point if the transfer itself doesn't bring
+        # playback with it.
+        snapshot = capture_playback_snapshot(api)
+        result = transfer_with_resume(api, device_id, snapshot)
         
         # Save as selected device in session and mark as manual selection
         request.session['selected_device_id'] = device_id
         request.session['use_web_player'] = False
         request.session['manual_device_selection'] = True  # Prevent auto-switching
+        request.session.save()
         
-        return JsonResponse({'status': 'transferred', 'device_id': device_id})
+        if not result['success']:
+            return JsonResponse({'error': result['message'], 'code': 'transfer_failed'}, status=502)
+        
+        return JsonResponse({
+            'status': 'transferred',
+            'device_id': device_id,
+            'resumed': result['resumed'],
+            'message': result['message'],
+        })
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
 
@@ -365,31 +525,28 @@ def select_web_player(request):
     """Select the Web Playback SDK player as the active device."""
     device_id = request.GET.get('device_id', '')
     
-    sp = get_spotify_client(request)
-    if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    api = get_spotify_client(request)
+    if not api:
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
+    
+    resumed = False
+    message = None
     
     # If device_id is provided (from Web Playback SDK), transfer to it
     if device_id:
         try:
-            # First verify the device exists
-            response = sp.get_devices()
-            response.raise_for_status()
-            devices_list = response.json()
-            device_found = False
-            for device in devices_list.get('devices', []):
-                if device['id'] == device_id:
-                    device_found = True
-                    break
+            # Web player device might not show up in get_devices() yet -
+            # that's fine, it's still valid to transfer to.
+            # force_play used to always be True here, which could
+            # unpause something the user had intentionally paused. Use
+            # the same snapshot-and-verify helper as transfer_device so
+            # this respects prior play state and actually confirms
+            # playback landed on the web player instead of assuming it did.
+            snapshot = capture_playback_snapshot(api)
+            result = transfer_with_resume(api, device_id, snapshot)
+            resumed = result['resumed']
+            message = result['message']
             
-            if not device_found:
-                # Web player device might not be in the list yet, but that's okay
-                # It should still be available for transfer
-                pass
-            
-            # Transfer playback to the web player device and resume playback
-            # Use force_play=True to continue playing after transfer
-            sp.transfer_playback(device_id=device_id, force_play=True)
             request.session['web_player_device_id'] = device_id
             request.session['manual_device_selection'] = True  # Set this BEFORE other session updates
         except Exception as e:
@@ -399,28 +556,65 @@ def select_web_player(request):
     request.session['selected_device_id'] = None
     request.session['manual_device_selection'] = True  # Prevent auto-switching
     request.session.save()  # Explicitly save session
-    return JsonResponse({'status': 'selected', 'device': 'web_player'})
+    return JsonResponse({'status': 'selected', 'device': 'web_player', 'resumed': resumed, 'message': message})
 
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def play(request):
-    """Start playback on selected device (REST API only, for non-web-player devices)."""
-    sp = get_spotify_client(request)
-    if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    """
+    Resume playback on the selected non-web-player device.
+
+    Previously this called start_playback() with no context/uris and
+    never checked the response status, so once a playlist finished and
+    Spotify dropped its "resume" context, the call would 404 silently
+    and this view would still report {'status': 'playing'} - GitHub
+    issue #6. It now checks the response and falls back to explicitly
+    restarting the last known context/track when there's nothing left
+    for Spotify to resume on its own.
+    """
+    api = get_spotify_client(request)
+    if not api:
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     use_web_player = request.session.get('use_web_player', True)
     if use_web_player:
         return JsonResponse({'error': 'Use Web Playback SDK for web player'}, status=400)
     
+    device_id = request.session.get('selected_device_id')
+    if not device_id:
+        return JsonResponse({'error': 'No device selected', 'code': 'no_device'}, status=400)
+    
     try:
-        device_id = request.session.get('selected_device_id')
-        if not device_id:
-            return JsonResponse({'error': 'No device selected'}, status=400)
+        api.transfer_playback(device_id=device_id, force_play=False)
+        response = api.start_playback(device_id=device_id)
         
-        sp.transfer_playback(device_id=device_id, force_play=False)
-        sp.start_playback(device_id=device_id)
+        if response.status_code == 404:
+            # Nothing for Spotify to resume - fall back to the last
+            # known context/track (live snapshot first, then whatever
+            # current_playback() last cached in the session).
+            snapshot = capture_playback_snapshot(api) or request.session.get('last_known_playback')
+            
+            if snapshot and snapshot.get('context_uri') and snapshot.get('item_uri'):
+                response = api.start_playback(
+                    device_id=device_id,
+                    context_uri=snapshot['context_uri'],
+                    offset={'uri': snapshot['item_uri']},
+                )
+            elif snapshot and snapshot.get('item_uri'):
+                response = api.start_playback(device_id=device_id, uris=[snapshot['item_uri']])
+            else:
+                return JsonResponse({
+                    'error': 'Nothing to resume - pick a playlist, album, or song to start playback.',
+                    'code': 'no_active_context',
+                }, status=409)
+        
+        if response.status_code >= 400:
+            return JsonResponse({
+                'error': f'Spotify API error: {response.status_code}',
+                'code': 'playback_error',
+            }, status=502)
+        
         return JsonResponse({'status': 'playing', 'device_id': device_id})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
@@ -432,7 +626,7 @@ def pause(request):
     """Pause playback (REST API only, for non-web-player devices)."""
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     use_web_player = request.session.get('use_web_player', True)
     if use_web_player:
@@ -452,7 +646,7 @@ def next_track(request):
     """Skip to next track (REST API only, for non-web-player devices)."""
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     use_web_player = request.session.get('use_web_player', True)
     if use_web_player:
@@ -472,7 +666,7 @@ def previous_track(request):
     """Skip to previous track (REST API only, for non-web-player devices)."""
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     use_web_player = request.session.get('use_web_player', True)
     if use_web_player:
@@ -488,6 +682,49 @@ def previous_track(request):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+def seek(request):
+    """
+    Seek to a position in the currently playing track/episode. Works
+    for both the web player and external devices - device_id is only
+    passed for external devices, same pattern as queue_track(), since
+    Spotify seeks on whichever device is currently active when it's
+    omitted.
+    """
+    position_ms = request.GET.get('position_ms', '')
+    if position_ms == '':
+        return JsonResponse({'error': 'position_ms required'}, status=400)
+    
+    try:
+        position_ms = int(position_ms)
+    except ValueError:
+        return JsonResponse({'error': 'position_ms must be an integer'}, status=400)
+    
+    if position_ms < 0:
+        return JsonResponse({'error': 'position_ms must not be negative'}, status=400)
+    
+    api = get_spotify_client(request)
+    if not api:
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
+    
+    try:
+        use_web_player = request.session.get('use_web_player', True)
+        device_id = None if use_web_player else request.session.get('selected_device_id')
+        
+        response = api.seek_playback(position_ms, device_id=device_id)
+        
+        if response.status_code >= 400:
+            return JsonResponse({
+                'error': f'Spotify API error: {response.status_code}',
+                'code': 'playback_error',
+            }, status=502)
+        
+        return JsonResponse({'status': 'seeked', 'position_ms': position_ms})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
 def queue_track(request):
     """Add track to queue."""
     track_id = request.GET.get('id', '')
@@ -496,7 +733,7 @@ def queue_track(request):
     
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         use_web_player = request.session.get('use_web_player', True)
@@ -517,7 +754,7 @@ def play_track(request):
     
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         use_web_player = request.session.get('use_web_player', True)
@@ -546,7 +783,7 @@ def playlists(request):
     """Get user's playlists with pagination."""
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         offset = int(request.GET.get('offset', 0))
@@ -586,7 +823,7 @@ def albums(request):
     """Get user's saved albums with pagination."""
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         offset = int(request.GET.get('offset', 0))
@@ -625,7 +862,7 @@ def saved_tracks(request):
     """Get user's saved tracks (liked songs) with pagination."""
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         offset = int(request.GET.get('offset', 0))
@@ -748,7 +985,7 @@ def discover(request):
     """Get random discover content - playlists, albums, and tracks."""
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         discover_data = {
@@ -883,7 +1120,7 @@ def album_detail(request):
     
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         # Get album details
@@ -944,7 +1181,7 @@ def playlist_detail(request):
     
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         # Get playlist details
@@ -1009,7 +1246,7 @@ def play_playlist(request):
     
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         use_web_player = request.session.get('use_web_player', True)
@@ -1042,7 +1279,7 @@ def play_album(request):
     
     sp = get_spotify_client(request)
     if not sp:
-        return JsonResponse({'error': 'Not authenticated'}, status=401)
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     
     try:
         use_web_player = request.session.get('use_web_player', True)
