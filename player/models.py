@@ -52,3 +52,41 @@ class SpotifyAccount(models.Model):
         if token_info.get('refresh_token'):
             self.refresh_token = token_info['refresh_token']
         self.token_expires_at = token_info['expires_at']
+
+
+class FeelRadio(models.Model):
+    """
+    One feel-radio session per linked account. The pile of candidate
+    songs lives here so continuing playback does not re-read Spotify
+    until the pile runs short.
+    """
+    account = models.OneToOneField(
+        SpotifyAccount,
+        on_delete=models.CASCADE,
+        related_name="feel_radio",
+    )
+    active = models.BooleanField(default=False)
+    continue_forever = models.BooleanField(default=True)
+    emotions = models.JSONField(default=list)
+    feel_name = models.CharField(max_length=40, blank=True)
+    # {"Sad Mad": 4} — next snapshot uses the stored number plus one.
+    counters = models.JSONField(default=dict)
+    pool = models.JSONField(default=list)
+    queued_tracks = models.JSONField(default=list)
+    unsnapshotted = models.JSONField(default=list)
+    latest_batch = models.JSONField(default=list)
+    live_playlist_id = models.CharField(max_length=64, blank=True)
+    live_playlist_name = models.CharField(max_length=120, blank=True)
+    snapshots = models.JSONField(default=list)
+    last_extend_uri = models.CharField(max_length=128, blank=True)
+    extend_blocked = models.BooleanField(default=False)
+    source_name = models.CharField(max_length=200, blank=True)
+    last_reads = models.JSONField(default=list)
+    last_query = models.CharField(max_length=120, blank=True)
+
+    @property
+    def tail_uri(self):
+        tracks = self.queued_tracks or []
+        if not tracks:
+            return ""
+        return tracks[-1].get("uri") or ""

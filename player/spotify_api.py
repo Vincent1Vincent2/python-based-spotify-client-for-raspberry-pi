@@ -539,6 +539,28 @@ class SpotifyAPI:
         params = {'limit': limit, 'offset': offset}
         return self.get(f'playlists/{playlist_id}/tracks', params=params)
 
+    def create_playlist(self, name, description='', public=False):
+        """Create a playlist for the current user. One POST /me/playlists."""
+        return self.post('me/playlists', json={
+            'name': name,
+            'description': description,
+            'public': bool(public),
+        })
+
+    def add_playlist_items(self, playlist_id, uris):
+        """Add up to 100 URIs in one POST /playlists/{id}/items."""
+        return self.post(
+            f'playlists/{playlist_id}/items',
+            json={'uris': list(uris)},
+        )
+
+    def set_shuffle(self, state, device_id=None):
+        """Shuffle on or off. One PUT /me/player/shuffle."""
+        params = {'state': 'true' if state else 'false'}
+        if device_id:
+            params['device_id'] = device_id
+        return self.put('me/player/shuffle', params=params)
+
 
 def get_active_account(request):
     """
