@@ -222,6 +222,7 @@
                         onkeypress="handleSearchKeyPress(event)">
                     <button class="btn" onclick="searchTracks()">Search</button>
                 </div>
+                <div class="search-history" id="searchHistory" hidden></div>
                 <div class="search-results" id="searchResults"></div>
             </div>
 
@@ -342,6 +343,7 @@
         </div>
     </div>
 
+    <script src="{% static 'player/js/search-history.js' %}"></script>
     <script>
         const clientId = '{{ client_id }}';
         let accessToken = '{{ access_token|default:"" }}';
@@ -817,6 +819,9 @@
                     if (data.error) {
                         results.innerHTML = '<div style="text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
                         return;
+                    }
+                    if (window.recordSearchQuery) {
+                        window.recordSearchQuery(query);
                     }
                     renderSearchResults(data);
                 })
