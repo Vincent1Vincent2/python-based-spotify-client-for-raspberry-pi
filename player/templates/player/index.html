@@ -8,6 +8,7 @@
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
     {% load static %}
     <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
+    <link rel="stylesheet" href="{% static 'player/css/connect.css' %}">
     <style>
         /* Scrub bar - scoped here rather than player.css so this
            feature stays self-contained; can be moved into player.css
@@ -187,32 +188,69 @@
                 <button class="btn btn-next" id="nextBtn" onclick="nextTrack()" disabled>⏭ Next</button>
             </div>
 
-            <div class="device-selector">
-                <h3>Select Playback Device</h3>
+            <div class="device-selector connect-panel">
+                <svg class="connect-sprite" aria-hidden="true" focusable="false" width="0" height="0">
+                    <symbol id="connect-icon-computer" viewBox="0 0 24 24">
+                        <rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <path d="M8 21h8M12 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </symbol>
+                    <symbol id="connect-icon-phone" viewBox="0 0 24 24">
+                        <rect x="6" y="2" width="12" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="12" cy="18" r="0.9" fill="currentColor"/>
+                    </symbol>
+                    <symbol id="connect-icon-tv" viewBox="0 0 24 24">
+                        <rect x="2" y="7" width="20" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <path d="M17 2 12 7 7 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </symbol>
+                    <symbol id="connect-icon-speaker" viewBox="0 0 24 24">
+                        <path fill="currentColor" d="M11 5 6 9H2v6h4l5 4V5z"/>
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </symbol>
+                </svg>
+                <div class="connect-heading">
+                    <svg class="connect-heading-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <use href="#connect-icon-speaker"></use>
+                    </svg>
+                    <h3>Connect to a device</h3>
+                </div>
                 <div class="device-list" id="deviceList">
-                    <div class="device-item {% if use_web_player %}active{% endif %}" id="web-player-item">
+                    <div class="connect-group-label">This device</div>
+                    <div class="device-item{% if use_web_player %} active{% endif %}" id="web-player-item"{% if use_web_player %} aria-current="true"{% endif %}>
+                        <svg class="connect-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <use href="#connect-icon-computer"></use>
+                        </svg>
                         <div class="device-info">
-                            <div class="device-name">This Browser (Web Player)</div>
-                            <div class="device-type">Web Playback SDK • Independent player</div>
+                            <div class="device-name">This web browser</div>
+                            <div class="device-type">Web Player</div>
                         </div>
-                        <button class="device-select-btn" onclick="selectWebPlayer()" id="web-player-btn">
+                        <span class="connect-eq" aria-hidden="true"><span></span><span></span><span></span></span>
+                        <button class="device-select-btn" onclick="selectWebPlayer()" id="web-player-btn" type="button">
                             {% if use_web_player %}Selected{% else %}Select{% endif %}
                         </button>
                     </div>
+                    {% if devices %}
+                    <div class="connect-group-label">Other devices</div>
+                    {% endif %}
                     {% for device in devices %}
-                    <div class="device-item {% if not use_web_player and device.id == selected_device_id %}active{% endif %}"
-                        data-device-id="{{ device.id }}">
+                    {% with kind=device.type|lower %}
+                    <div class="device-item{% if not use_web_player and device.id == selected_device_id %} active{% endif %}"
+                        data-device-id="{{ device.id }}"{% if not use_web_player and device.id == selected_device_id %} aria-current="true"{% endif %}>
+                        <svg class="connect-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <use href="{% if kind == 'computer' or kind == 'tablet' %}#connect-icon-computer{% elif kind == 'smartphone' %}#connect-icon-phone{% elif kind == 'tv' or kind == 'castvideo' or kind == 'stb' %}#connect-icon-tv{% else %}#connect-icon-speaker{% endif %}"></use>
+                        </svg>
                         <div class="device-info">
                             <div class="device-name">{{ device.name }}</div>
                             <div class="device-type">{{ device.type }} • Volume: {{ device.volume_percent }}%</div>
                         </div>
-                        <button class="device-select-btn" onclick="selectDevice('{{ device.id }}')">
-                            {% if not use_web_player and device.id == selected_device_id %}Selected{% else %} Select
-                            {%endif%}
+                        <span class="connect-eq" aria-hidden="true"><span></span><span></span><span></span></span>
+                        <button class="device-select-btn" onclick="selectDevice('{{ device.id }}')" type="button">
+                            {% if not use_web_player and device.id == selected_device_id %}Selected{% else %}Select{% endif %}
                         </button>
                     </div>
+                    {% endwith %}
                     {% endfor %}
                 </div>
+                <p class="connect-status is-idle" id="connectStatus" role="status">No active device</p>
             </div>
 
             <div class="search-section">
@@ -351,6 +389,8 @@
         let isPlaying = false;
         let useWebPlayer = {% if use_web_player %} true {% else %} false {% endif %};
         let detailViewSource = null; // 'playlists' | 'albums' | 'discover' - where we opened the detail view from
+        // Device currently playing, taken from the /current-playback/ poll.
+        let activePlaybackDevice = null;
 
         // --- Scrub bar state ---
         let progressDurationMs = 0;
@@ -393,6 +433,7 @@
 
             player.addListener('ready', ({ device_id }) => {
                 deviceId = device_id;
+                renderConnectStatus();
                 document.getElementById('playerStatus').textContent = 'Player ready!';
                 document.getElementById('prevBtn').disabled = false;
                 document.getElementById('playBtn').disabled = false;
@@ -649,6 +690,55 @@
             }
         }
 
+        function connectDeviceLabel(device) {
+            if (deviceId && device.id && device.id === deviceId) {
+                return 'This web browser';
+            }
+            return device.name || 'Unknown device';
+        }
+
+        function renderConnectStatus() {
+            const status = document.getElementById('connectStatus');
+            const panel = document.querySelector('.connect-panel');
+            const device = activePlaybackDevice;
+            const known = !!(device && (device.id || device.name));
+            const label = known ? connectDeviceLabel(device) : '';
+            if (status) {
+                status.textContent = label ? 'Listening on ' + label : 'No active device';
+                status.classList.toggle('is-idle', !label);
+            }
+            if (panel) {
+                panel.classList.toggle('has-live-device', known);
+            }
+            document.querySelectorAll('#deviceList .device-item').forEach(item => {
+                const isWeb = item.id === 'web-player-item';
+                const rowId = item.getAttribute('data-device-id') || '';
+                const sameAsWebPlayer = !!(device && device.id && deviceId && device.id === deviceId);
+                const listening = !!(device && device.id && (
+                    sameAsWebPlayer ? isWeb : (!isWeb && rowId === device.id)
+                ));
+                item.classList.toggle('listening', listening);
+                if (listening) {
+                    item.setAttribute('aria-current', 'true');
+                } else {
+                    item.removeAttribute('aria-current');
+                }
+            });
+        }
+
+        function rememberActivePlaybackDevice(device) {
+            if (device && (device.id || device.name)) {
+                activePlaybackDevice = {
+                    id: device.id || '',
+                    name: device.name || '',
+                    type: device.type || ''
+                };
+            } else {
+                activePlaybackDevice = null;
+            }
+            renderConnectStatus();
+        }
+
         function checkCurrentPlayback() {
             // Check current playback for external devices
             fetch('/current-playback/')
@@ -664,6 +754,7 @@
                         return;
                     }
                     maybeAdvanceFeel(data);
+                    rememberActivePlaybackDevice(data.device || null);
 
                     // Get the actual active device ID from the API response (the device that's actually playing)
                     const activeDeviceId = data.device?.id || data.debug?.device_id;

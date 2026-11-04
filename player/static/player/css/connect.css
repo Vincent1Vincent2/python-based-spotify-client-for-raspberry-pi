@@ -1,0 +1,289 @@
+/* Spotify Connect style device picker.
+   Overrides the generic .device-* rules in player.css for #deviceList. */
+
+.connect-panel {
+    --connect-green: #1db954;
+    --connect-green-deep: #0d7a34;
+    --connect-green-tint: rgba(29, 185, 84, 0.14);
+}
+
+.connect-sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+}
+
+.connect-panel .connect-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.connect-panel.device-selector h3 {
+    margin: 0;
+    text-align: left;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.connect-heading-icon {
+    width: 18px;
+    height: 18px;
+    display: block;
+    flex: 0 0 18px;
+    color: var(--connect-green-deep, #0d7a34);
+}
+
+#deviceList {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: var(--border-width) solid var(--color-border);
+    background: var(--color-bg);
+    overflow: hidden;
+}
+
+#deviceList .connect-group-label {
+    padding: 10px 14px 4px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-gray);
+}
+
+#deviceList .device-item,
+#web-player-item {
+    border: none;
+    border-bottom: 1px solid #e6e6e6;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text);
+    padding: 12px 14px;
+    gap: 12px;
+    align-items: center;
+    cursor: default;
+}
+
+#deviceList .device-item:last-child {
+    border-bottom: none;
+}
+
+#deviceList .device-item:hover {
+    background: #f6f6f6;
+    color: var(--color-text);
+}
+
+#deviceList .device-item.listening,
+.connect-panel:not(.has-live-device) #deviceList .device-item.active {
+    background: var(--connect-green-tint, rgba(29, 185, 84, 0.14));
+    box-shadow: inset 3px 0 0 var(--connect-green, #1db954);
+}
+
+#deviceList .device-item.listening:hover,
+.connect-panel:not(.has-live-device) #deviceList .device-item.active:hover {
+    background: var(--connect-green-tint, rgba(29, 185, 84, 0.14));
+    color: var(--color-text);
+}
+
+#deviceList .device-info {
+    flex: 1;
+    min-width: 0;
+    color: var(--color-text);
+}
+
+#deviceList .device-item:hover .device-info,
+#deviceList .device-item.active .device-info,
+#deviceList .device-item.listening .device-info {
+    color: var(--color-text);
+}
+
+#deviceList .device-name {
+    margin-bottom: 2px;
+    font-size: 0.98rem;
+    font-weight: 650;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#deviceList .device-item.listening .device-name,
+.connect-panel:not(.has-live-device) #deviceList .device-item.active .device-name {
+    color: var(--connect-green-deep, #0d7a34);
+}
+
+#deviceList .device-type {
+    font-size: 0.78rem;
+    color: var(--color-gray);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.connect-glyph {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    display: block;
+    color: var(--color-text);
+}
+
+#deviceList .device-item.listening .connect-glyph,
+.connect-panel:not(.has-live-device) #deviceList .device-item.active .connect-glyph {
+    color: var(--connect-green-deep, #0d7a34);
+}
+
+.connect-eq {
+    display: none;
+    align-items: flex-end;
+    gap: 2px;
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+}
+
+#deviceList .device-item.listening .connect-eq,
+.connect-panel:not(.has-live-device) #deviceList .device-item.active .connect-eq {
+    display: flex;
+}
+
+.connect-eq span {
+    display: block;
+    width: 3px;
+    height: 40%;
+    background: var(--connect-green, #1db954);
+    transform-origin: bottom;
+    animation: connect-eq 0.9s ease-in-out infinite alternate;
+}
+
+.connect-eq span:nth-child(2) {
+    height: 100%;
+    animation-delay: 0.15s;
+}
+
+.connect-eq span:nth-child(3) {
+    height: 65%;
+    animation-delay: 0.3s;
+}
+
+@keyframes connect-eq {
+    from { transform: scaleY(0.35); }
+    to { transform: scaleY(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .connect-eq span {
+        animation: none;
+        height: 70%;
+    }
+}
+
+#deviceList .device-select-btn {
+    flex: 0 0 auto;
+    min-width: 88px;
+    text-align: center;
+    background: var(--color-bg);
+    color: var(--color-text);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: 0;
+    padding: 7px 14px;
+    font-weight: 650;
+}
+
+#deviceList .device-item:hover .device-select-btn {
+    background: var(--color-bg);
+    color: var(--color-text);
+    border-color: var(--color-border);
+}
+
+#deviceList .device-item.active .device-select-btn {
+    background: var(--color-bg);
+    border-color: var(--color-text);
+    color: var(--color-text);
+}
+
+.connect-panel:not(.has-live-device) #deviceList .device-item.active .device-select-btn,
+#deviceList .device-item.active.listening .device-select-btn {
+    background: var(--connect-green, #1db954);
+    border-color: var(--connect-green, #1db954);
+    color: #14210f;
+}
+
+#deviceList .device-select-btn:hover,
+#deviceList .device-item.active .device-select-btn:hover {
+    background: var(--connect-green, #1db954);
+    border-color: var(--connect-green, #1db954);
+    color: #14210f;
+}
+
+#deviceList .device-select-btn:focus-visible {
+    outline: 2px solid var(--connect-green-deep, #0d7a34);
+    outline-offset: 2px;
+}
+
+#connectStatus {
+    margin: 12px 0 0;
+    min-height: 1.2em;
+    font-size: 0.9rem;
+    font-weight: 650;
+    line-height: 1.2;
+    color: var(--connect-green-deep, #0d7a34);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#connectStatus.is-idle {
+    color: var(--color-gray);
+    font-weight: 500;
+}
+
+#connectStatus::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 8px;
+    border-radius: 50%;
+    background: var(--connect-green, #1db954);
+    vertical-align: 0.05em;
+}
+
+#connectStatus.is-idle::before {
+    background: var(--color-gray);
+}
+
+@media (max-width: 480px) {
+    .connect-panel.device-selector {
+        padding: 12px;
+    }
+
+    #deviceList .device-item,
+    #web-player-item {
+        padding: 10px;
+        gap: 8px;
+    }
+
+    #deviceList .connect-group-label {
+        padding: 8px 10px 2px;
+    }
+
+    .connect-glyph {
+        width: 22px;
+        height: 22px;
+        flex-basis: 22px;
+    }
+
+    #deviceList .device-name,
+    #deviceList .device-type {
+        white-space: normal;
+    }
+
+    #deviceList .device-select-btn {
+        min-width: 0;
+        padding: 6px 8px;
+        font-size: 0.8rem;
+    }
+}

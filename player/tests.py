@@ -342,3 +342,68 @@ class FeelPageTests(TestCase):
         status = client.get("/feel/status/")
         self.assertEqual(status.status_code, 200)
         self.assertFalse(status.json()["active"])
+
+
+class ConnectPickerTests(TestCase):
+    def test_template_keeps_device_list_and_web_player_button(self):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        template = Path(settings.BASE_DIR, "player/templates/player/index.html").read_text()
+        css = Path(settings.BASE_DIR, "player/static/player/css/connect.css").read_text()
+        self.assertIn('id="deviceList"', template)
+        self.assertIn('id="web-player-btn"', template)
+        self.assertIn("selectWebPlayer()", template)
+        self.assertIn("selectDevice(", template)
+        self.assertIn("/transfer/?device_id=", template)
+        self.assertIn('id="connectStatus"', template)
+        self.assertLess(template.index('id="deviceList"'), template.index('id="connectStatus"'))
+        self.assertIn("rememberActivePlaybackDevice(data.device", template)
+        self.assertIn("#deviceList", css)
+        self.assertIn("#web-player-item", css)
+        self.assertIn("#connectStatus", css)
+
+    def test_player_page_renders_connect_picker(self):
+        import time
+        from unittest.mock import patch
+
+        account = SpotifyAccount.objects.create(
+            spotify_user_id="connect-user",
+            display_name="Connect",
+            access_token="access",
+            refresh_token="refresh",
+            token_expires_at=time.time() + 3600,
+        )
+        client = Client()
+        session = client.session
+        session["active_account_id"] = account.id
+        session["use_web_player"] = True
+        session.save()
+        devices = {
+            "devices": [{
+                "id": "speaker-1",
+                "name": "Kitchen",
+                "type": "Speaker",
+                "volume_percent": 40,
+                "is_active": False,
+            }]
+        }
+
+        with patch("player.spotify_api.SpotifyAPI.get_devices", return_value=FakeResponse(devices)), \
+                patch("player.spotify_api.SpotifyAPI.get_current_playback", return_value=FakeResponse({}, status=204)):
+            page = client.get("/")
+
+        self.assertEqual(page.status_code, 200)
+        body = page.content.decode()
+        self.assertIn('id="deviceList"', body)
+        self.assertIn('id="web-player-btn"', body)
+        self.assertIn("selectWebPlayer()", body)
+        self.assertIn("selectDevice('speaker-1')", body)
+        self.assertIn('id="connectStatus"', body)
+        self.assertIn("No active device", body)
+        self.assertIn("This web browser", body)
+        self.assertIn("Kitchen", body)
+        self.assertIn("player/css/connect.css", body)
+        self.assertIn("#connect-icon-speaker", body)
+        self.assertIn("#connect-icon-computer", body)
