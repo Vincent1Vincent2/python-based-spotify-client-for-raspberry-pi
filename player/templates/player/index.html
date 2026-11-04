@@ -79,8 +79,8 @@
         }
 
         /* Three-dot "more actions" button, stacked above the track
-           duration - opens a small menu with Play Now / Add to Queue,
-           as an explicit alternative to the swipe gesture. */
+           duration - opens a small menu with Play Now, Add to Queue,
+           Save, Add to playlist, and Open album. */
         .track-actions-col {
             display: flex;
             flex-direction: column;
@@ -337,6 +337,8 @@
                 <div class="playlist-detail-actions" id="playlistDetailActions"></div>
                 <div class="tracks-list" id="tracksList"></div>
             </div>
+
+            {% include "player/features/track_actions/panel.html" %}
 
             <div class="status-indicator" id="statusIndicator"></div>
         </div>
@@ -976,10 +978,13 @@
 
             const menu = document.createElement('div');
             menu.className = 'track-context-menu';
+            menu.dataset.trackId = trackId || '';
+            menu.dataset.albumId = btn.dataset.albumId || '';
             menu.innerHTML = `
                 <div class="track-context-menu-title">${trackName}</div>
                 <button class="track-context-menu-item" data-action="play">▶ Play Now</button>
                 <button class="track-context-menu-item" data-action="queue">➕ Add to Queue</button>
+                {% include "player/features/track_actions/menu_items.html" %}
             `;
             document.body.appendChild(menu);
 
@@ -1256,7 +1261,7 @@
                                                 <div class="track-artist">${track.artists.join(', ')}</div>
                                             </div>
                                             <div class="track-actions-col">
-                                                <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-playlist-id="${data.id}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                                <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-playlist-id="${data.id}" data-album-id="${track.album_id || ''}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
                                                 <div class="track-duration">${durationStr}</div>
                                             </div>
                                         </div>
@@ -1424,7 +1429,7 @@
                                                 <div class="track-artist">${track.artists.join(', ')}</div>
                                             </div>
                                             <div class="track-actions-col">
-                                                <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                                <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-album-id="${track.album_id || ''}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
                                                 <div class="track-duration">${durationStr}</div>
                                             </div>
                                         </div>
@@ -1527,7 +1532,7 @@
                                     <div class="track-artist">${track.artists.join(', ')} • ${track.album}</div>
                                 </div>
                                 <div class="track-actions-col">
-                                    <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                    <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-album-id="${track.album_id || ''}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
                                     <div class="track-duration">${durationStr}</div>
                                 </div>
                             </div>
@@ -1862,7 +1867,7 @@
                                         <div class="discover-track-artist">${track.artists.join(', ')} • ${track.album}</div>
                                     </div>
                                     <div class="track-actions-col">
-                                        <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                        <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-album-id="${track.album_id || ''}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
                                         <div style="color: #1a1a1a; font-size: 0.85rem;">${durationStr}</div>
                                     </div>
                                 </div>

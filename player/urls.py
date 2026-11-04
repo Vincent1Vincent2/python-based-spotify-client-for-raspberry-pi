@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import include, path
 from . import views
 
 urlpatterns = [
@@ -22,6 +22,7 @@ urlpatterns = [
     path('seek/', views.seek, name='seek'),
     path('queue/', views.queue_track, name='queue'),
     path('play-track/', views.play_track, name='play_track'),
+    path('track-actions/', include('player.features.track_actions.urls')),
     path('playlists/', views.playlists, name='playlists'),
     path('playlist-detail/', views.playlist_detail, name='playlist_detail'),
     path('play-playlist/', views.play_playlist, name='play_playlist'),
