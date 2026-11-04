@@ -383,3 +383,117 @@ class FeelPageTests(TestCase):
         status = client.get("/feel/status/")
         self.assertEqual(status.status_code, 200)
         self.assertFalse(status.json()["active"])
+
+
+class AlbumCardTests(TestCase):
+    def _albums_response(self, items):
+        from unittest.mock import patch
+
+        from django.test import RequestFactory
+
+        from player.views import albums
+
+        calls = []
+
+        class Api:
+            def get_user_saved_albums(self, limit=50, offset=0):
+                calls.append(("GET /me/albums", limit, offset))
+                return FakeResponse({
+                    "items": items,
+                    "next": None,
+                    "total": len([item for item in items if item]),
+                })
+
+            def get_album(self, album_id):
+                calls.append(("GET /albums", album_id))
+                raise AssertionError("album cards must use the image on GET /me/albums")
+
+        request = RequestFactory().get("/albums/?offset=0&limit=50")
+        with patch("player.views.get_spotify_client", return_value=Api()):
+            response = albums(request)
+        return response, calls
+
+    def test_album_json_includes_image_when_the_album_has_images(self):
+        album = {
+            "id": "al1",
+            "name": "Night Drive",
+            "artists": [{"name": "Ada"}, {"name": "Bea"}],
+            "images": [
+                {"url": "https://i.scdn.co/image/large", "width": 640, "height": 640},
+                {"url": "https://i.scdn.co/image/small", "width": 64, "height": 64},
+            ],
+            "release_date": "2020-05-01",
+            "total_tracks": 9,
+        }
+        response, calls = self._albums_response([
+            {"added_at": "2024-01-01T00:00:00Z", "album": album},
+        ])
+
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.content)
+        self.assertEqual(calls, [("GET /me/albums", 50, 0)])
+        self.assertEqual(len(body["albums"]), 1)
+        self.assertEqual(body["albums"][0]["image"], "https://i.scdn.co/image/large")
+        self.assertEqual(body["albums"][0]["name"], "Night Drive")
+        self.assertEqual(body["albums"][0]["artists"], ["Ada", "Bea"])
+
+    def test_missing_images_list_yields_a_null_image(self):
+        missing = {
+            "id": "al2",
+            "name": "No Cover",
+            "artists": [{"name": "Ada"}],
+            "release_date": "2019",
+            "total_tracks": 1,
+        }
+        empty = {
+            "id": "al3",
+            "name": "Empty Cover",
+            "artists": [{"name": "Bea"}],
+            "images": [],
+            "release_date": "2018",
+            "total_tracks": 2,
+        }
+        response, calls = self._albums_response([
+            {"added_at": "2024-01-01T00:00:00Z", "album": missing},
+            {"added_at": "2024-01-02T00:00:00Z", "album": empty},
+            None,
+        ])
+
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.content)
+        self.assertEqual(calls, [("GET /me/albums", 50, 0)])
+        self.assertEqual(len(body["albums"]), 2)
+        self.assertIsNone(body["albums"][0]["image"])
+        self.assertEqual(body["albums"][0]["name"], "No Cover")
+        self.assertIsNone(body["albums"][1]["image"])
+        self.assertNotIn("error", body)
+
+    def test_player_page_links_album_cards_once(self):
+        import time
+        from unittest.mock import patch
+
+        account = SpotifyAccount.objects.create(
+            spotify_user_id="album-card-user",
+            display_name="Albums",
+            access_token="access",
+            refresh_token="refresh",
+            token_expires_at=time.time() + 3600,
+        )
+        client = Client()
+        session = client.session
+        session["active_account_id"] = account.id
+        session["use_web_player"] = True
+        session.save()
+
+        with patch("player.spotify_api.SpotifyAPI.get_devices", return_value=FakeResponse({"devices": []})), \
+                patch("player.spotify_api.SpotifyAPI.get_current_playback", return_value=FakeResponse({}, status=204)):
+            page = client.get("/")
+
+        self.assertEqual(page.status_code, 200)
+        body = page.content.decode()
+        self.assertEqual(body.count("player/css/album-cards.css"), 1)
+        self.assertIn("album-card-cover", body)
+        self.assertIn("album-card-artist", body)
+        self.assertIn("function displayAlbums", body)
+        self.assertIn('class="playlist-item"', body)
+        self.assertNotIn("playlist-cards.css", body)
