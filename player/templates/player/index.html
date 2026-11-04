@@ -8,6 +8,7 @@
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
     {% load static %}
     <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
+    <link rel="stylesheet" href="{% static 'player/css/states.css' %}">
     <style>
         /* Scrub bar - scoped here rather than player.css so this
            feature stays self-contained; can be moved into player.css
@@ -247,9 +248,7 @@
                                     id="sort-tracks">Tracks</button>
                             </div>
                         </div>
-                        <div class="playlists-grid" id="playlistsGrid">
-                            <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading playlists...</div>
-                        </div>
+                        <div class="playlists-grid" id="playlistsGrid"></div>
                         <div style="text-align: center; margin-top: 20px;">
                             <button class="btn" id="loadMorePlaylists" onclick="loadPlaylists(false)"
                                 style="display: none;">Load More</button>
@@ -262,9 +261,7 @@
                         <div class="section-header">
                             <h3>Albums</h3>
                         </div>
-                        <div class="albums-grid" id="albumsGrid">
-                            <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading albums...</div>
-                        </div>
+                        <div class="albums-grid" id="albumsGrid"></div>
                         <div style="text-align: center; margin-top: 20px;">
                             <button class="btn" id="loadMoreAlbums" onclick="loadAlbums(false)"
                                 style="display: none;">Load More</button>
@@ -277,9 +274,7 @@
                         <div class="section-header">
                             <h3>Songs</h3>
                         </div>
-                        <div class="songs-list" id="songsList">
-                            <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading songs...</div>
-                        </div>
+                        <div class="songs-list" id="songsList"></div>
                         <div style="text-align: center; margin-top: 20px;">
                             <button class="btn" id="loadMoreSongs" onclick="loadSongs(false)"
                                 style="display: none;">Load More</button>
@@ -293,9 +288,7 @@
                             <h3>Discover</h3>
                             <button class="btn" onclick="loadDiscover(true)" style="margin-left: 10px;">Refresh</button>
                         </div>
-                        <div id="discoverContent">
-                            <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading discoveries...</div>
-                        </div>
+                        <div id="discoverContent"></div>
                     </div>
                 </div>
 
@@ -342,7 +335,13 @@
         </div>
     </div>
 
+    <script src="{% static 'player/js/states.js' %}"></script>
     <script>
+        renderState(document.getElementById('playlistsGrid'), 'loading', 'Loading playlists...');
+        renderState(document.getElementById('albumsGrid'), 'loading', 'Loading albums...');
+        renderState(document.getElementById('songsList'), 'loading', 'Loading songs...');
+        renderState(document.getElementById('discoverContent'), 'loading', 'Loading discoveries...');
+
         const clientId = '{{ client_id }}';
         let accessToken = '{{ access_token|default:"" }}';
         let player;
@@ -1133,17 +1132,19 @@
         let playlistsHasMore = false;
 
         function loadPlaylists(reset = false) {
+            const grid = document.getElementById('playlistsGrid');
             if (reset) {
                 allPlaylists = [];
                 originalPlaylistsOrder = [];
                 playlistsOffset = 0;
+                renderState(grid, 'loading', 'Loading playlists...');
             }
 
             fetch(`/playlists/?offset=${playlistsOffset}&limit=50`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        document.getElementById('playlistsGrid').innerHTML = '<div style="text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
+                        renderState(grid, 'error', data.error);
                         return;
                     }
 
@@ -1161,14 +1162,14 @@
                     }
                 })
                 .catch(error => {
-                    document.getElementById('playlistsGrid').innerHTML = '<div style="text-align: center; padding: 20px;">Error loading playlists</div>';
+                    renderState(grid, 'error', 'Error loading playlists');
                 });
         }
 
         function displayPlaylists(playlists) {
             const grid = document.getElementById('playlistsGrid');
             if (playlists.length === 0) {
-                grid.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No playlists found</div>';
+                renderState(grid, 'empty', 'No playlists found');
                 return;
             }
 
@@ -1301,17 +1302,19 @@
         let albumsHasMore = false;
 
         function loadAlbums(reset = false) {
+            const grid = document.getElementById('albumsGrid');
             if (reset) {
                 allAlbums = [];
                 originalAlbumsOrder = [];
                 albumsOffset = 0;
+                renderState(grid, 'loading', 'Loading albums...');
             }
 
             fetch(`/albums/?offset=${albumsOffset}&limit=50`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        document.getElementById('albumsGrid').innerHTML = '<div style="text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
+                        renderState(grid, 'error', data.error);
                         return;
                     }
 
@@ -1329,14 +1332,14 @@
                     }
                 })
                 .catch(error => {
-                    document.getElementById('albumsGrid').innerHTML = '<div style="text-align: center; padding: 20px;">Error loading albums</div>';
+                    renderState(grid, 'error', 'Error loading albums');
                 });
         }
 
         function displayAlbums(albums) {
             const grid = document.getElementById('albumsGrid');
             if (albums.length === 0) {
-                grid.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No albums found</div>';
+                renderState(grid, 'empty', 'No albums found');
                 return;
             }
 
@@ -1474,16 +1477,18 @@
         let songsHasMore = false;
 
         function loadSongs(reset = false) {
+            const list = document.getElementById('songsList');
             if (reset) {
                 allSongs = [];
                 songsOffset = 0;
+                renderState(list, 'loading', 'Loading songs...');
             }
 
             fetch(`/saved-tracks/?offset=${songsOffset}&limit=50`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        document.getElementById('songsList').innerHTML = '<div style="text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
+                        renderState(list, 'error', data.error);
                         return;
                     }
 
@@ -1500,14 +1505,14 @@
                     }
                 })
                 .catch(error => {
-                    document.getElementById('songsList').innerHTML = '<div style="text-align: center; padding: 20px;">Error loading songs</div>';
+                    renderState(list, 'error', 'Error loading songs');
                 });
         }
 
         function displaySongs(songs) {
             const list = document.getElementById('songsList');
             if (songs.length === 0) {
-                list.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No saved songs found</div>';
+                renderState(list, 'empty', 'No saved songs found');
                 return;
             }
 
@@ -1783,27 +1788,35 @@
             if (!contentDiv) return;
 
             if (reset) {
-                contentDiv.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">Loading discoveries...</div>';
+                renderState(contentDiv, 'loading', 'Loading discoveries...');
             }
 
             fetch('/discover/')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        contentDiv.innerHTML = '<div style="text-align: center; padding: 20px;">Error: ' + data.error + '</div>';
+                        renderState(contentDiv, 'error', data.error);
                         return;
                     }
 
                     displayDiscover(data);
                 })
                 .catch(error => {
-                    contentDiv.innerHTML = '<div style="text-align: center; padding: 20px;">Error loading discoveries</div>';
+                    renderState(contentDiv, 'error', 'Error loading discoveries');
                 });
         }
 
         function displayDiscover(data) {
             const contentDiv = document.getElementById('discoverContent');
             if (!contentDiv) return;
+
+            const hasPlaylists = data.playlists && data.playlists.length > 0;
+            const hasAlbums = data.albums && data.albums.length > 0;
+            const hasTracks = data.tracks && data.tracks.length > 0;
+            if (!hasPlaylists && !hasAlbums && !hasTracks) {
+                renderState(contentDiv, 'empty', 'No discoveries found');
+                return;
+            }
 
             let html = '<div class="discover-content">';
 

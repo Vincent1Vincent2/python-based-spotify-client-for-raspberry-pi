@@ -1,0 +1,36 @@
+.state-panel {
+    grid-column: 1 / -1;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 28px 16px;
+    border: var(--border-width, 2px) solid var(--color-border, #1a1a1a);
+    background: var(--color-bg, #ffffff);
+    color: var(--color-text, #1a1a1a);
+    text-align: center;
+}
+
+.state-title {
+    margin: 0 0 6px;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.state-message {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+.state-loading {
+    background: var(--color-bg, #ffffff);
+}
+
+.state-empty {
+    background: var(--color-gray-light, #f5f5f5);
+}
+
+.state-error {
+    background: var(--color-text, #1a1a1a);
+    border-color: var(--color-text, #1a1a1a);
+    color: var(--color-bg, #ffffff);
+}
