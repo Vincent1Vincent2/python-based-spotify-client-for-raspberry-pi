@@ -238,6 +238,7 @@
                     <button class="tab-button" onclick="switchTab('songs')" id="tab-songs">Songs</button>
                     <button class="tab-button" onclick="switchTab('discover')" id="tab-discover">Discover</button>
                     <button class="tab-button" onclick="switchTab('feel')" id="tab-feel">Feel</button>
+                    <button class="tab-button" onclick="switchTab('search-browser')" id="tab-search-browser">Search+</button>
                     <button class="tab-button" onclick="switchTab('home')" id="tab-home">Home</button>
                 </div>
 
@@ -338,6 +339,7 @@
                         <div id="feelTracks"></div>
                     </div>
                 </div>
+                {% include "player/search_browser/panel.html" %}
 
                 <div class="tab-content" id="content-home">
                     <div class="home-section" id="homeSection">
