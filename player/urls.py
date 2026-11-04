@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .features.library_home import views as library_home
 from .features.playback_modes import views as playback_modes
 from .features.playlist_pins import pin_playlist, playlist_marks, tag_playlist
 
@@ -42,6 +43,7 @@ urlpatterns = [
     path('feel/start/', views.feel_start_view, name='feel_start'),
     path('feel/advance/', views.feel_advance_view, name='feel_advance'),
     path('feel/stop/', views.feel_stop_view, name='feel_stop'),
+    path('home/', library_home.home, name='library_home'),
     path('settings/', views.settings_view, name='settings'),
     path('settings/audio/', views.update_audio_settings, name='update_audio_settings'),
     path('settings/reboot/', views.reboot_system, name='reboot_system'),

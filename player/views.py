@@ -19,7 +19,8 @@ SPOTIFY_SCOPE = (
     'user-modify-playback-state user-read-playback-state '
     'user-read-currently-playing user-read-playback-position streaming '
     'playlist-read-private playlist-read-collaborative '
-    'playlist-modify-private user-library-read'
+    'playlist-modify-private user-library-read '
+    'user-read-recently-played'
 )
 
 
@@ -110,22 +111,22 @@ def index(request):
 def login_view(request):
     """
     Show login page or initiate Spotify OAuth login.
-    
-    Now also offers any accounts already linked on this device so they
-    can be reactivated without going through OAuth again - the "auth=1"
-    flow is specifically for linking a NEW account.
+
+    auth=1 always starts OAuth, including when a session is already
+    active, so a 403 needs_scope response can send the player to
+    /login/?auth=1 and grant user-read-recently-played. Without that
+    flag, an active session still goes straight to the player, and the
+    page can offer accounts already linked on this device.
     """
-    # If already authenticated, redirect to index
-    sp = get_spotify_client(request)
-    if sp:
-        return redirect('index')
-    
-    # If 'auth' parameter is present, initiate OAuth flow to link a new account
     if request.GET.get('auth') == '1':
         api = SpotifyAPI()
         auth_url = api.get_authorization_url(SPOTIFY_SCOPE)
         return redirect(auth_url)
-    
+
+    sp = get_spotify_client(request)
+    if sp:
+        return redirect('index')
+
     accounts = SpotifyAccount.objects.all()
     return render(request, 'player/login.html', {'accounts': accounts})
 
