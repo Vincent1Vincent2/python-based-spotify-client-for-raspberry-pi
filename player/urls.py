@@ -1,6 +1,8 @@
 from django.urls import path
 from . import views
 from .features.library_home import views as library_home
+from .features.playback_modes import views as playback_modes
+from .features.playlist_pins import pin_playlist, playlist_marks, tag_playlist
 
 urlpatterns = [
     path('', views.index, name='index'),
@@ -21,9 +23,15 @@ urlpatterns = [
     path('next/', views.next_track, name='next'),
     path('previous/', views.previous_track, name='previous'),
     path('seek/', views.seek, name='seek'),
+    path('shuffle/', playback_modes.shuffle, name='shuffle'),
+    path('repeat/', playback_modes.repeat, name='repeat'),
+    path('volume/', playback_modes.volume, name='volume'),
     path('queue/', views.queue_track, name='queue'),
     path('play-track/', views.play_track, name='play_track'),
     path('playlists/', views.playlists, name='playlists'),
+    path('playlist-pins/pin/', pin_playlist, name='playlist_pin'),
+    path('playlist-pins/tag/', tag_playlist, name='playlist_tag'),
+    path('playlist-pins/marks/', playlist_marks, name='playlist_marks'),
     path('playlist-detail/', views.playlist_detail, name='playlist_detail'),
     path('play-playlist/', views.play_playlist, name='play_playlist'),
     path('albums/', views.albums, name='albums'),

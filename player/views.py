@@ -422,10 +422,13 @@ def current_playback(request):
                     'is_playing': is_playing,
                     'track': episode_data,
                     'type': 'episode',
+                    'shuffle_state': playback.get('shuffle_state'),
+                    'repeat_state': playback.get('repeat_state'),
                     'device': {
                         'id': device.get('id'),
                         'name': device.get('name'),
                         'type': device.get('type'),
+                        'volume_percent': device.get('volume_percent'),
                     }
                 })
             else:
@@ -450,10 +453,13 @@ def current_playback(request):
                     'is_playing': is_playing,
                     'track': track_data,
                     'type': 'track',
+                    'shuffle_state': playback.get('shuffle_state'),
+                    'repeat_state': playback.get('repeat_state'),
                     'device': {
                         'id': device.get('id'),
                         'name': device.get('name'),
                         'type': device.get('type'),
+                        'volume_percent': device.get('volume_percent'),
                     }
                 })
         
@@ -463,10 +469,13 @@ def current_playback(request):
             'is_playing': is_playing,
             'track': None,
             'type': None,
+            'shuffle_state': playback.get('shuffle_state'),
+            'repeat_state': playback.get('repeat_state'),
             'device': {
                 'id': device.get('id'),
                 'name': device.get('name'),
                 'type': device.get('type'),
+                'volume_percent': device.get('volume_percent'),
             } if device else None
         })
         
@@ -828,6 +837,47 @@ def playlists(request):
         return JsonResponse({'error': str(e)}, status=400)
 
 
+def first_album_image(album):
+    """First cover URL already on a Spotify album object.
+
+    GET /me/albums includes images on each album, so a card does not
+    need another request per album. A missing or empty images list is
+    a null cover, not an error.
+    """
+    if not isinstance(album, dict):
+        return None
+    images = album.get('images') or []
+    if not images:
+        return None
+    first = images[0] or {}
+    if isinstance(first, str):
+        return first or None
+    if isinstance(first, dict):
+        return first.get('url') or None
+    return None
+
+
+def build_album_json(album):
+    """JSON for one album card from a saved-album album object."""
+    artists = []
+    for artist in album.get('artists') or []:
+        if isinstance(artist, dict):
+            name = artist.get('name')
+            if name:
+                artists.append(name)
+        elif isinstance(artist, str) and artist:
+            artists.append(artist)
+    total = album.get('total_tracks', 0)
+    return {
+        'id': album.get('id'),
+        'name': album.get('name') or '',
+        'artists': artists,
+        'image': first_album_image(album),
+        'release_date': album.get('release_date', '') or '',
+        'total_tracks': total if isinstance(total, int) else 0,
+    }
+
+
 def albums(request):
     """Get user's saved albums with pagination."""
     sp = get_spotify_client(request)
@@ -844,15 +894,12 @@ def albums(request):
         results = response.json()
         
         for item in results['items']:
-            album = item['album']
-            albums_list.append({
-                'id': album['id'],
-                'name': album['name'],
-                'artists': [artist['name'] for artist in album['artists']],
-                'image': album['images'][0]['url'] if album['images'] else None,
-                'release_date': album.get('release_date', ''),
-                'total_tracks': album.get('total_tracks', 0),
-            })
+            if not isinstance(item, dict):
+                continue
+            album = item.get('album')
+            if not isinstance(album, dict):
+                continue
+            albums_list.append(build_album_json(album))
         
         # Check if there are more albums
         has_more = results['next'] is not None
