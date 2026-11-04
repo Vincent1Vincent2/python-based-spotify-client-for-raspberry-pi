@@ -29,8 +29,8 @@ PAGE_LIMIT = 50
 SEARCH_LIMIT = 10
 QUERY_CHAR_LIMIT = 100
 
-# Canonical order keeps "Sad Mad" stable no matter which button was pressed first.
-EMOTION_ORDER = ("sad", "happy", "mad")
+# Canonical order keeps "Sad Mad" and "Calm Hype" stable no matter which button was pressed first.
+EMOTION_ORDER = ("sad", "happy", "mad", "calm", "focus", "hype", "romantic")
 
 EMOTIONS = {
     "sad": {
@@ -57,11 +57,44 @@ EMOTIONS = {
         ),
         "query_terms": ("angry", "rage", "hate", "furious"),
     },
+    "calm": {
+        "label": "Calm",
+        "terms": (
+            "calm", "peaceful", "serene", "tranquil", "mellow", "hush",
+            "lullaby", "stillness", "unwind", "breeze",
+        ),
+        "query_terms": ("calm", "peaceful", "serene", "tranquil"),
+    },
+    "focus": {
+        "label": "Focus",
+        "terms": (
+            "focus", "focused", "study", "studying", "concentrate",
+            "concentration", "mindful", "ambient", "instrumental", "clarity",
+        ),
+        "query_terms": ("focus", "study", "ambient", "mindful"),
+    },
+    "hype": {
+        "label": "Hype",
+        "terms": (
+            "hype", "hyped", "turnt", "banger", "adrenaline", "anthem",
+            "stadium", "mosh", "rager", "bounce",
+        ),
+        "query_terms": ("hype", "turnt", "banger", "adrenaline"),
+    },
+    "romantic": {
+        "label": "Romantic",
+        "terms": (
+            "romantic", "romance", "darling", "sweetheart", "kiss", "kisses",
+            "valentine", "candlelight", "serenade", "devotion",
+        ),
+        "query_terms": ("romantic", "romance", "serenade", "valentine"),
+    },
 }
 
 _WORD = re.compile(r"[a-z0-9']+")
+_EMOTION_LABEL = "|".join(re.escape(EMOTIONS[key]["label"]) for key in EMOTION_ORDER)
 _GENERATED_PLAYLIST = re.compile(
-    r"^(?:Sad|Happy|Mad)(?: (?:Sad|Happy|Mad))* (?:Radio|\d{2})$"
+    rf"^(?:{_EMOTION_LABEL})(?: (?:{_EMOTION_LABEL}))* (?:Radio|\d{{2}})$"
 )
 _STOP = {
     "the", "and", "for", "with", "you", "your", "that", "this", "from",
@@ -85,7 +118,8 @@ def feel_name(emotions):
     """Static label for a selection. The number that follows it is separate."""
     emotions = normalize_emotions(emotions)
     if not emotions:
-        raise FeelError("Choose sad, happy, mad, or a combination.")
+        names = ", ".join(EMOTION_ORDER)
+        raise FeelError(f"Choose {names}, or a combination.")
     return " ".join(EMOTIONS[key]["label"] for key in emotions)
 
 

@@ -305,17 +305,21 @@
                             <h3>Feel radio</h3>
                         </div>
                         <p class="feel-note">
-                            Pick sad, happy, mad, or a combination. Two Spotify reads
-                            chain 30 songs from the playlist whose name matches that feel
-                            (or from saved songs). The name stays put — Sad Mad 01, Sad Mad 02 —
-                            and one search, built from the song that is ending, keeps it going.
+                            Pick sad, happy, mad, calm, focus, hype, romantic, or a combination.
+                            Two Spotify reads chain 30 songs from the playlist whose name matches
+                            that feel (or from saved songs). The name stays put — Sad Mad 01,
+                            Calm Focus 01 — and one search, built from the song that is ending, keeps it going.
                         </p>
                         <div class="feel-emotions" id="feelEmotions">
                             <button type="button" class="feel-emotion" data-emotion="sad" aria-pressed="false">Sad</button>
                             <button type="button" class="feel-emotion" data-emotion="happy" aria-pressed="false">Happy</button>
                             <button type="button" class="feel-emotion" data-emotion="mad" aria-pressed="false">Mad</button>
+                            <button type="button" class="feel-emotion" data-emotion="calm" aria-pressed="false">Calm</button>
+                            <button type="button" class="feel-emotion" data-emotion="focus" aria-pressed="false">Focus</button>
+                            <button type="button" class="feel-emotion" data-emotion="hype" aria-pressed="false">Hype</button>
+                            <button type="button" class="feel-emotion" data-emotion="romantic" aria-pressed="false">Romantic</button>
                         </div>
-                        <p class="feel-combo" id="feelCombo">Select a feel. Combine two, or all three.</p>
+                        <p class="feel-combo" id="feelCombo">Select a feel. Combine any of them.</p>
                         <label class="feel-forever">
                             <input type="checkbox" id="feelForever" checked>
                             Keep going after the last song
@@ -1592,12 +1596,15 @@
         }
 
         function updateFeelCombo() {
-            const labels = { sad: 'Sad', happy: 'Happy', mad: 'Mad' };
+            const labels = {
+                sad: 'Sad', happy: 'Happy', mad: 'Mad',
+                calm: 'Calm', focus: 'Focus', hype: 'Hype', romantic: 'Romantic',
+            };
             const selected = selectedFeelEmotions().map(function (key) { return labels[key]; });
             const combo = document.getElementById('feelCombo');
             if (!combo) return;
             if (!selected.length) {
-                combo.textContent = 'Select a feel. Combine two, or all three.';
+                combo.textContent = 'Select a feel. Combine any of them.';
             } else if (selected.length === 1) {
                 combo.textContent = selected[0] + '. Songs that carry this feel come first.';
             } else {
@@ -1687,7 +1694,7 @@
             const emotions = selectedFeelEmotions();
             const status = document.getElementById('feelStatus');
             if (!emotions.length) {
-                status.textContent = 'Choose sad, happy, mad, or a combination.';
+                status.textContent = 'Choose sad, happy, mad, calm, focus, hype, romantic, or a combination.';
                 return;
             }
             status.textContent = 'Reading your library in two calls...';

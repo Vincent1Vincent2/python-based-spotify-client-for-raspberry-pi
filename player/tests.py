@@ -93,6 +93,16 @@ class FeelMatchingTests(TestCase):
     def test_feel_name_ignores_click_order(self):
         self.assertEqual(feel_name(["mad", "sad"]), "Sad Mad")
         self.assertEqual(feel_name(["sad", "mad", "happy"]), "Sad Happy Mad")
+        self.assertEqual(feel_name(["hype", "calm"]), "Calm Hype")
+        self.assertEqual(feel_name(["calm", "hype"]), feel_name(["hype", "calm"]))
+        self.assertEqual(
+            feel_name(["romantic", "hype", "focus", "calm"]),
+            "Calm Focus Hype Romantic",
+        )
+        self.assertLessEqual(
+            len(feel_name(["romantic", "hype", "focus", "calm", "mad", "happy", "sad"])),
+            40,
+        )
 
     def test_unknown_emotion_is_rejected(self):
         with self.assertRaises(FeelError):
@@ -105,10 +115,20 @@ class FeelMatchingTests(TestCase):
             score_track(both, ["sad", "mad"]),
             score_track(only, ["sad", "mad"]),
         )
+        both_new = {"uri": "spotify:track:c1", "name": "peaceful banger", "artists": [], "album": ""}
+        only_new = {"uri": "spotify:track:c2", "name": "peaceful morning", "artists": [], "album": ""}
+        self.assertGreater(
+            score_track(both_new, ["hype", "calm"]),
+            score_track(only_new, ["hype", "calm"]),
+        )
 
     def test_mad_does_not_match_inside_another_word(self):
         track = {"uri": "spotify:track:3", "name": "made of gold", "artists": [], "album": ""}
         self.assertEqual(score_track(track, ["mad"]), 0)
+        later = {"uri": "spotify:track:w", "name": "hyper focusing romanceable", "artists": [], "album": ""}
+        self.assertEqual(score_track(later, ["hype"]), 0)
+        self.assertEqual(score_track(later, ["focus"]), 0)
+        self.assertEqual(score_track(later, ["romantic"]), 0)
 
     def test_query_leads_with_the_song_that_is_ending_and_stays_short(self):
         query = build_query(
@@ -120,6 +140,16 @@ class FeelMatchingTests(TestCase):
         self.assertNotIn("A" * 90, query)
         self.assertIn("sad", query)
 
+    def test_new_mood_query_leads_with_the_seed_title_and_stays_short(self):
+        query = build_query(
+            ["hype", "calm", "focus", "romantic"],
+            {"name": "Paper Planes", "artists": ["A" * 90], "uri": "spotify:track:p"},
+        )
+        self.assertTrue(query.startswith("paper"))
+        self.assertLessEqual(len(query), QUERY_CHAR_LIMIT)
+        self.assertLessEqual(len(query), 100)
+        self.assertNotIn("A" * 90, query)
+
     def test_same_artist_is_closer_than_an_unrelated_title(self):
         left = {"name": "blue", "artists": ["Ada"]}
         same = {"name": "other", "artists": ["Ada"]}
@@ -129,7 +159,10 @@ class FeelMatchingTests(TestCase):
     def test_generated_playlists_are_recognized(self):
         self.assertTrue(is_generated_playlist_name("Sad Mad Radio"))
         self.assertTrue(is_generated_playlist_name("Sad Mad 01"))
+        self.assertTrue(is_generated_playlist_name("Calm Focus Radio"))
+        self.assertTrue(is_generated_playlist_name("Calm Focus 01"))
         self.assertFalse(is_generated_playlist_name("Sad Songs"))
+        self.assertFalse(is_generated_playlist_name("Calm Songs"))
 
     def test_collect_uses_two_reads_and_the_matching_playlist(self):
         reads = []
@@ -337,6 +370,14 @@ class FeelPageTests(TestCase):
         self.assertIn('data-emotion="sad"', body)
         self.assertIn('data-emotion="happy"', body)
         self.assertIn('data-emotion="mad"', body)
+        self.assertIn('data-emotion="calm"', body)
+        self.assertIn('data-emotion="focus"', body)
+        self.assertIn('data-emotion="hype"', body)
+        self.assertIn('data-emotion="romantic"', body)
+        self.assertIn(">Calm</button>", body)
+        self.assertIn(">Focus</button>", body)
+        self.assertIn(">Hype</button>", body)
+        self.assertIn(">Romantic</button>", body)
         self.assertIn("Keep going after the last song", body)
 
         status = client.get("/feel/status/")
