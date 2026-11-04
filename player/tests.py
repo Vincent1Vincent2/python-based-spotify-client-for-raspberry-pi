@@ -93,6 +93,16 @@ class FeelMatchingTests(TestCase):
     def test_feel_name_ignores_click_order(self):
         self.assertEqual(feel_name(["mad", "sad"]), "Sad Mad")
         self.assertEqual(feel_name(["sad", "mad", "happy"]), "Sad Happy Mad")
+        self.assertEqual(feel_name(["hype", "calm"]), "Calm Hype")
+        self.assertEqual(feel_name(["calm", "hype"]), feel_name(["hype", "calm"]))
+        self.assertEqual(
+            feel_name(["romantic", "hype", "focus", "calm"]),
+            "Calm Focus Hype Romantic",
+        )
+        self.assertLessEqual(
+            len(feel_name(["romantic", "hype", "focus", "calm", "mad", "happy", "sad"])),
+            40,
+        )
 
     def test_unknown_emotion_is_rejected(self):
         with self.assertRaises(FeelError):
@@ -105,10 +115,20 @@ class FeelMatchingTests(TestCase):
             score_track(both, ["sad", "mad"]),
             score_track(only, ["sad", "mad"]),
         )
+        both_new = {"uri": "spotify:track:c1", "name": "peaceful banger", "artists": [], "album": ""}
+        only_new = {"uri": "spotify:track:c2", "name": "peaceful morning", "artists": [], "album": ""}
+        self.assertGreater(
+            score_track(both_new, ["hype", "calm"]),
+            score_track(only_new, ["hype", "calm"]),
+        )
 
     def test_mad_does_not_match_inside_another_word(self):
         track = {"uri": "spotify:track:3", "name": "made of gold", "artists": [], "album": ""}
         self.assertEqual(score_track(track, ["mad"]), 0)
+        later = {"uri": "spotify:track:w", "name": "hyper focusing romanceable", "artists": [], "album": ""}
+        self.assertEqual(score_track(later, ["hype"]), 0)
+        self.assertEqual(score_track(later, ["focus"]), 0)
+        self.assertEqual(score_track(later, ["romantic"]), 0)
 
     def test_query_leads_with_the_song_that_is_ending_and_stays_short(self):
         query = build_query(
@@ -120,6 +140,16 @@ class FeelMatchingTests(TestCase):
         self.assertNotIn("A" * 90, query)
         self.assertIn("sad", query)
 
+    def test_new_mood_query_leads_with_the_seed_title_and_stays_short(self):
+        query = build_query(
+            ["hype", "calm", "focus", "romantic"],
+            {"name": "Paper Planes", "artists": ["A" * 90], "uri": "spotify:track:p"},
+        )
+        self.assertTrue(query.startswith("paper"))
+        self.assertLessEqual(len(query), QUERY_CHAR_LIMIT)
+        self.assertLessEqual(len(query), 100)
+        self.assertNotIn("A" * 90, query)
+
     def test_same_artist_is_closer_than_an_unrelated_title(self):
         left = {"name": "blue", "artists": ["Ada"]}
         same = {"name": "other", "artists": ["Ada"]}
@@ -129,7 +159,10 @@ class FeelMatchingTests(TestCase):
     def test_generated_playlists_are_recognized(self):
         self.assertTrue(is_generated_playlist_name("Sad Mad Radio"))
         self.assertTrue(is_generated_playlist_name("Sad Mad 01"))
+        self.assertTrue(is_generated_playlist_name("Calm Focus Radio"))
+        self.assertTrue(is_generated_playlist_name("Calm Focus 01"))
         self.assertFalse(is_generated_playlist_name("Sad Songs"))
+        self.assertFalse(is_generated_playlist_name("Calm Songs"))
 
     def test_collect_uses_two_reads_and_the_matching_playlist(self):
         reads = []
@@ -337,8 +370,130 @@ class FeelPageTests(TestCase):
         self.assertIn('data-emotion="sad"', body)
         self.assertIn('data-emotion="happy"', body)
         self.assertIn('data-emotion="mad"', body)
+        self.assertIn('data-emotion="calm"', body)
+        self.assertIn('data-emotion="focus"', body)
+        self.assertIn('data-emotion="hype"', body)
+        self.assertIn('data-emotion="romantic"', body)
+        self.assertIn(">Calm</button>", body)
+        self.assertIn(">Focus</button>", body)
+        self.assertIn(">Hype</button>", body)
+        self.assertIn(">Romantic</button>", body)
         self.assertIn("Keep going after the last song", body)
 
         status = client.get("/feel/status/")
         self.assertEqual(status.status_code, 200)
         self.assertFalse(status.json()["active"])
+
+
+class AlbumCardTests(TestCase):
+    def _albums_response(self, items):
+        from unittest.mock import patch
+
+        from django.test import RequestFactory
+
+        from player.views import albums
+
+        calls = []
+
+        class Api:
+            def get_user_saved_albums(self, limit=50, offset=0):
+                calls.append(("GET /me/albums", limit, offset))
+                return FakeResponse({
+                    "items": items,
+                    "next": None,
+                    "total": len([item for item in items if item]),
+                })
+
+            def get_album(self, album_id):
+                calls.append(("GET /albums", album_id))
+                raise AssertionError("album cards must use the image on GET /me/albums")
+
+        request = RequestFactory().get("/albums/?offset=0&limit=50")
+        with patch("player.views.get_spotify_client", return_value=Api()):
+            response = albums(request)
+        return response, calls
+
+    def test_album_json_includes_image_when_the_album_has_images(self):
+        album = {
+            "id": "al1",
+            "name": "Night Drive",
+            "artists": [{"name": "Ada"}, {"name": "Bea"}],
+            "images": [
+                {"url": "https://i.scdn.co/image/large", "width": 640, "height": 640},
+                {"url": "https://i.scdn.co/image/small", "width": 64, "height": 64},
+            ],
+            "release_date": "2020-05-01",
+            "total_tracks": 9,
+        }
+        response, calls = self._albums_response([
+            {"added_at": "2024-01-01T00:00:00Z", "album": album},
+        ])
+
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.content)
+        self.assertEqual(calls, [("GET /me/albums", 50, 0)])
+        self.assertEqual(len(body["albums"]), 1)
+        self.assertEqual(body["albums"][0]["image"], "https://i.scdn.co/image/large")
+        self.assertEqual(body["albums"][0]["name"], "Night Drive")
+        self.assertEqual(body["albums"][0]["artists"], ["Ada", "Bea"])
+
+    def test_missing_images_list_yields_a_null_image(self):
+        missing = {
+            "id": "al2",
+            "name": "No Cover",
+            "artists": [{"name": "Ada"}],
+            "release_date": "2019",
+            "total_tracks": 1,
+        }
+        empty = {
+            "id": "al3",
+            "name": "Empty Cover",
+            "artists": [{"name": "Bea"}],
+            "images": [],
+            "release_date": "2018",
+            "total_tracks": 2,
+        }
+        response, calls = self._albums_response([
+            {"added_at": "2024-01-01T00:00:00Z", "album": missing},
+            {"added_at": "2024-01-02T00:00:00Z", "album": empty},
+            None,
+        ])
+
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.content)
+        self.assertEqual(calls, [("GET /me/albums", 50, 0)])
+        self.assertEqual(len(body["albums"]), 2)
+        self.assertIsNone(body["albums"][0]["image"])
+        self.assertEqual(body["albums"][0]["name"], "No Cover")
+        self.assertIsNone(body["albums"][1]["image"])
+        self.assertNotIn("error", body)
+
+    def test_player_page_links_album_cards_once(self):
+        import time
+        from unittest.mock import patch
+
+        account = SpotifyAccount.objects.create(
+            spotify_user_id="album-card-user",
+            display_name="Albums",
+            access_token="access",
+            refresh_token="refresh",
+            token_expires_at=time.time() + 3600,
+        )
+        client = Client()
+        session = client.session
+        session["active_account_id"] = account.id
+        session["use_web_player"] = True
+        session.save()
+
+        with patch("player.spotify_api.SpotifyAPI.get_devices", return_value=FakeResponse({"devices": []})), \
+                patch("player.spotify_api.SpotifyAPI.get_current_playback", return_value=FakeResponse({}, status=204)):
+            page = client.get("/")
+
+        self.assertEqual(page.status_code, 200)
+        body = page.content.decode()
+        self.assertEqual(body.count("player/css/album-cards.css"), 1)
+        self.assertIn("album-card-cover", body)
+        self.assertIn("album-card-artist", body)
+        self.assertIn("function displayAlbums", body)
+        self.assertIn('class="playlist-item"', body)
+        self.assertNotIn("playlist-cards.css", body)

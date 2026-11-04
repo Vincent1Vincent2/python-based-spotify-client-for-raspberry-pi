@@ -1,0 +1,269 @@
+<style>
+    #track-actions-picker {
+        position: fixed;
+        z-index: 10000;
+        max-height: 70vh;
+        overflow: auto;
+        min-width: 210px;
+        max-width: 280px;
+    }
+    #track-actions-album {
+        margin-top: 20px;
+    }
+    #track-actions-album-tracks {
+        list-style: none;
+        padding: 0;
+        margin: 12px 0 0;
+    }
+    #track-actions-album-tracks li {
+        padding: 10px 0;
+        border-bottom: 1px solid var(--color-border);
+    }
+</style>
+
+<div id="track-actions-picker" class="track-context-menu" style="display: none;" hidden>
+    <div class="track-context-menu-title">Add to playlist</div>
+    <div id="track-actions-picker-list"></div>
+</div>
+
+<div id="track-actions-album" style="display: none;" hidden>
+    <button type="button" class="back-button" id="track-actions-album-back">← Back</button>
+    <h2 id="track-actions-album-title"></h2>
+    <ul id="track-actions-album-tracks"></ul>
+</div>
+
+<script>
+(function () {
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
+        });
+    }
+
+    function status(message) {
+        var el = document.getElementById('statusIndicator');
+        if (!el) return;
+        el.textContent = message || '';
+        if (!message) return;
+        setTimeout(function () {
+            if (el.textContent === message) el.textContent = '';
+        }, 2000);
+    }
+
+    function hidePicker() {
+        var picker = document.getElementById('track-actions-picker');
+        if (!picker) return;
+        picker.style.display = 'none';
+        picker.hidden = true;
+    }
+
+    function trackUri(trackId) {
+        if (!trackId) return '';
+        if (trackId.indexOf('spotify:') === 0) return trackId;
+        return 'spotify:track:' + trackId;
+    }
+
+    function saveTrack(trackId) {
+        if (!trackId) {
+            status('No song selected');
+            return;
+        }
+        fetch('/track-actions/save/?id=' + encodeURIComponent(trackId), { method: 'POST' })
+            .then(function (response) {
+                return response.json().then(function (data) {
+                    return { ok: response.ok, data: data };
+                });
+            })
+            .then(function (result) {
+                if (!result.ok || result.data.error) {
+                    status('Error: ' + (result.data.error || 'Could not save'));
+                    return;
+                }
+                status('Saved');
+            })
+            .catch(function () { status('Error: Could not save'); });
+    }
+
+    function addToPlaylist(playlistId, uri) {
+        hidePicker();
+        fetch('/track-actions/playlist/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playlist_id: playlistId, uri: uri })
+        })
+            .then(function (response) {
+                return response.json().then(function (data) {
+                    return { ok: response.ok, data: data };
+                });
+            })
+            .then(function (result) {
+                if (!result.ok || result.data.error) {
+                    status('Error: ' + (result.data.error || 'Could not add to playlist'));
+                    return;
+                }
+                status('Added to playlist');
+            })
+            .catch(function () { status('Error: Could not add to playlist'); });
+    }
+
+    function loadPlaylists(uri, offset) {
+        var picker = document.getElementById('track-actions-picker');
+        var list = document.getElementById('track-actions-picker-list');
+        if (!picker || !list || picker.dataset.uri !== uri) return;
+        fetch('/playlists/?offset=' + offset + '&limit=50')
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                if (!picker || picker.dataset.uri !== uri) return;
+                if (data.error) {
+                    if (offset === 0) list.textContent = data.error;
+                    return;
+                }
+                if (offset === 0) list.innerHTML = '';
+                var previousMore = list.querySelector('[data-track-actions-more]');
+                if (previousMore) previousMore.remove();
+                var playlists = data.playlists || [];
+                playlists.forEach(function (playlist) {
+                    var button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'track-context-menu-item';
+                    button.textContent = playlist.name || 'Playlist';
+                    button.addEventListener('click', function (event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        addToPlaylist(playlist.id, uri);
+                    });
+                    list.appendChild(button);
+                });
+                if (!playlists.length && offset === 0) {
+                    list.textContent = 'No playlists';
+                    return;
+                }
+                if (data.has_more) {
+                    var more = document.createElement('button');
+                    more.type = 'button';
+                    more.className = 'track-context-menu-item';
+                    more.setAttribute('data-track-actions-more', '1');
+                    more.textContent = 'More playlists';
+                    more.addEventListener('click', function (event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        loadPlaylists(uri, offset + playlists.length);
+                    });
+                    list.appendChild(more);
+                }
+            })
+            .catch(function () {
+                if (picker.dataset.uri === uri && offset === 0) {
+                    list.textContent = 'Could not load playlists';
+                }
+            });
+    }
+
+    function showPicker(menu, uri) {
+        var picker = document.getElementById('track-actions-picker');
+        var list = document.getElementById('track-actions-picker-list');
+        if (!picker || !list) return;
+        if (!uri) {
+            status('No song selected');
+            return;
+        }
+        picker.style.left = menu.style.left || '8px';
+        picker.style.top = menu.style.top || '8px';
+        picker.style.display = 'block';
+        picker.hidden = false;
+        picker.dataset.uri = uri;
+        list.textContent = 'Loading playlists…';
+        if (typeof window.closeTrackMenu === 'function') window.closeTrackMenu();
+        loadPlaylists(uri, 0);
+    }
+
+    function showAlbumList(data) {
+        var root = document.getElementById('track-actions-album');
+        var title = document.getElementById('track-actions-album-title');
+        var list = document.getElementById('track-actions-album-tracks');
+        if (!root || !list) return;
+        if (data.error) {
+            status('Error: ' + data.error);
+            return;
+        }
+        if (title) title.textContent = data.name || 'Album';
+        var tracks = data.tracks || [];
+        if (!tracks.length) {
+            list.innerHTML = '<li>No tracks</li>';
+        } else {
+            list.innerHTML = tracks.map(function (track) {
+                var artists = track.artists || [];
+                var artistText = Array.isArray(artists) ? artists.join(', ') : String(artists);
+                var line = escapeHtml(track.name || 'Track');
+                if (artistText) line += ' <span>' + escapeHtml(artistText) + '</span>';
+                return '<li>' + line + '</li>';
+            }).join('');
+        }
+        root.style.display = 'block';
+        root.hidden = false;
+    }
+
+    function openAlbum(albumId) {
+        if (!albumId) {
+            status('No album for this song');
+            return;
+        }
+        // Existing album detail UI. viewAlbum is the player page opener.
+        if (typeof window.openAlbum === 'function') {
+            window.openAlbum(albumId);
+            return;
+        }
+        if (typeof window.viewAlbum === 'function') {
+            window.viewAlbum(albumId);
+            return;
+        }
+        fetch('/album-detail/?id=' + encodeURIComponent(albumId))
+            .then(function (response) { return response.json(); })
+            .then(showAlbumList)
+            .catch(function () { status('Error loading album'); });
+    }
+
+    document.addEventListener('click', function (event) {
+        var button = event.target.closest && event.target.closest('.track-context-menu-item');
+        if (!button) return;
+        var action = button.getAttribute('data-action');
+        if (action !== 'save' && action !== 'playlist' && action !== 'album') return;
+        var menu = button.closest('.track-context-menu');
+        if (!menu || menu.id === 'track-actions-picker') return;
+        event.preventDefault();
+        event.stopPropagation();
+        var trackId = menu.dataset.trackId || '';
+        var albumId = menu.dataset.albumId || '';
+        if (action === 'save') {
+            hidePicker();
+            if (typeof window.closeTrackMenu === 'function') window.closeTrackMenu();
+            saveTrack(trackId);
+            return;
+        }
+        if (action === 'playlist') {
+            showPicker(menu, trackUri(trackId));
+            return;
+        }
+        hidePicker();
+        if (typeof window.closeTrackMenu === 'function') window.closeTrackMenu();
+        openAlbum(albumId);
+    }, true);
+
+    document.addEventListener('click', function (event) {
+        var picker = document.getElementById('track-actions-picker');
+        if (!picker || picker.style.display === 'none') return;
+        if (picker.contains(event.target)) return;
+        hidePicker();
+    });
+
+    var back = document.getElementById('track-actions-album-back');
+    if (back) {
+        back.addEventListener('click', function () {
+            var root = document.getElementById('track-actions-album');
+            if (!root) return;
+            root.style.display = 'none';
+            root.hidden = true;
+        });
+    }
+})();
+</script>

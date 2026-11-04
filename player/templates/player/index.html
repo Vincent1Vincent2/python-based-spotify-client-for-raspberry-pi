@@ -8,6 +8,7 @@
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
     {% load static %}
     <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
+    <link rel="stylesheet" href="{% static 'player/css/album-cards.css' %}">
     <style>
         /* Scrub bar - scoped here rather than player.css so this
            feature stays self-contained; can be moved into player.css
@@ -79,8 +80,8 @@
         }
 
         /* Three-dot "more actions" button, stacked above the track
-           duration - opens a small menu with Play Now / Add to Queue,
-           as an explicit alternative to the swipe gesture. */
+           duration - opens a small menu with Play Now, Add to Queue,
+           Save, Add to playlist, and Open album. */
         .track-actions-col {
             display: flex;
             flex-direction: column;
@@ -181,10 +182,14 @@
                     style="font-size: 0.9rem; padding: 8px 15px;">Refresh Playback Info</button>
             </div>
 
-            <div class="controls">
+            <div class="controls" style="flex-wrap: wrap;">
                 <button class="btn btn-previous" id="prevBtn" onclick="previousTrack()" disabled>⏮ Previous</button>
                 <button class="btn btn-play" id="playBtn" onclick="togglePlayback()" disabled>▶ Play</button>
                 <button class="btn btn-next" id="nextBtn" onclick="nextTrack()" disabled>⏭ Next</button>
+                <button class="btn" id="shuffleBtn" onclick="toggleShuffle()" disabled>Shuffle</button>
+                <button class="btn" id="repeatBtn" onclick="cycleRepeat()" data-cycle="off context track" data-repeat="off" disabled>Repeat</button>
+                <span style="align-self: center;">Volume</span>
+                <input type="range" id="volumeRange" min="0" max="100" value="0" aria-label="Volume" oninput="volumeDragging = true" onchange="commitVolume(this.value)" disabled style="align-self: center;">
             </div>
 
             <div class="device-selector">
@@ -234,6 +239,8 @@
                     <button class="tab-button" onclick="switchTab('discover')" id="tab-discover">Discover</button>
                     <button class="tab-button" onclick="switchTab('feel')" id="tab-feel">Feel</button>
                     <button class="tab-button" onclick="switchTab('recent')" id="tab-recent">Recent</button>
+                    <button class="tab-button" onclick="switchTab('search-browser')" id="tab-search-browser">Search+</button>
+                    <button class="tab-button" onclick="switchTab('home')" id="tab-home">Home</button>
                 </div>
 
                 <div class="tab-content active" id="content-playlists">
@@ -306,17 +313,21 @@
                             <h3>Feel radio</h3>
                         </div>
                         <p class="feel-note">
-                            Pick sad, happy, mad, or a combination. Two Spotify reads
-                            chain 30 songs from the playlist whose name matches that feel
-                            (or from saved songs). The name stays put — Sad Mad 01, Sad Mad 02 —
-                            and one search, built from the song that is ending, keeps it going.
+                            Pick sad, happy, mad, calm, focus, hype, romantic, or a combination.
+                            Two Spotify reads chain 30 songs from the playlist whose name matches
+                            that feel (or from saved songs). The name stays put — Sad Mad 01,
+                            Calm Focus 01 — and one search, built from the song that is ending, keeps it going.
                         </p>
                         <div class="feel-emotions" id="feelEmotions">
                             <button type="button" class="feel-emotion" data-emotion="sad" aria-pressed="false">Sad</button>
                             <button type="button" class="feel-emotion" data-emotion="happy" aria-pressed="false">Happy</button>
                             <button type="button" class="feel-emotion" data-emotion="mad" aria-pressed="false">Mad</button>
+                            <button type="button" class="feel-emotion" data-emotion="calm" aria-pressed="false">Calm</button>
+                            <button type="button" class="feel-emotion" data-emotion="focus" aria-pressed="false">Focus</button>
+                            <button type="button" class="feel-emotion" data-emotion="hype" aria-pressed="false">Hype</button>
+                            <button type="button" class="feel-emotion" data-emotion="romantic" aria-pressed="false">Romantic</button>
                         </div>
-                        <p class="feel-combo" id="feelCombo">Select a feel. Combine two, or all three.</p>
+                        <p class="feel-combo" id="feelCombo">Select a feel. Combine any of them.</p>
                         <label class="feel-forever">
                             <input type="checkbox" id="feelForever" checked>
                             Keep going after the last song
@@ -337,6 +348,19 @@
                         </div>
                         <div class="songs-list" id="recentList">
                             <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading recently played...</div>
+                {% include "player/search_browser/panel.html" %}
+
+                <div class="tab-content" id="content-home">
+                    <div class="home-section" id="homeSection">
+                        <div class="section-header">
+                            <h3>Home</h3>
+                        </div>
+                        <p class="home-note">The last 10 songs you played.</p>
+                        <div class="home-actions">
+                            <button class="btn" id="homeFeel" type="button" onclick="switchTab('feel')">Feel radio</button>
+                        </div>
+                        <div id="homeTracks">
+                            <div class="home-empty">Recently played songs load when you open Home.</div>
                         </div>
                     </div>
                 </div>
@@ -345,10 +369,13 @@
             <div class="playlist-detail-view" id="playlistDetailView">
                 <button class="back-button" id="detailBackButton" onclick="backFromDetail()">← Back to
                     Playlists</button>
+                {% include "player/_playlist_mark.html" %}
                 <div class="playlist-detail-header" id="playlistDetailHeader"></div>
                 <div class="playlist-detail-actions" id="playlistDetailActions"></div>
                 <div class="tracks-list" id="tracksList"></div>
             </div>
+
+            {% include "player/features/track_actions/panel.html" %}
 
             <div class="status-indicator" id="statusIndicator"></div>
         </div>
@@ -369,6 +396,10 @@
         let progressCurrentMs = 0;
         let isDraggingProgress = false;
         let progressTickInterval = null;
+        let shuffleOn = false;
+        let repeatState = 'off';
+        let volumeDragging = false;
+        let playbackModeBusy = 0;
 
         window.onSpotifyWebPlaybackSDKReady = () => {
             // Always initialize the web player to get device ID, even if not currently selected
@@ -393,6 +424,7 @@
                 document.getElementById('prevBtn').disabled = false;
                 document.getElementById('playBtn').disabled = false;
                 document.getElementById('nextBtn').disabled = false;
+                enableModeControls();
             }
         };
 
@@ -409,6 +441,7 @@
                 document.getElementById('prevBtn').disabled = false;
                 document.getElementById('playBtn').disabled = false;
                 document.getElementById('nextBtn').disabled = false;
+                enableModeControls();
             });
 
             player.addListener('not_ready', ({ device_id }) => {
@@ -676,6 +709,7 @@
                         return;
                     }
                     maybeAdvanceFeel(data);
+                    applyPlaybackModes(data);
 
                     // Get the actual active device ID from the API response (the device that's actually playing)
                     const activeDeviceId = data.device?.id || data.debug?.device_id;
@@ -797,6 +831,112 @@
                 fetch('/previous/', { method: 'POST' })
                     .then(response => response.json());
             }
+        }
+
+        function enableModeControls() {
+            const shuffleBtn = document.getElementById('shuffleBtn');
+            const repeatBtn = document.getElementById('repeatBtn');
+            const volumeRange = document.getElementById('volumeRange');
+            if (shuffleBtn) shuffleBtn.disabled = false;
+            if (repeatBtn) repeatBtn.disabled = false;
+            if (volumeRange) volumeRange.disabled = false;
+        }
+
+        function repeatLabel(state) {
+            if (state === 'context') return 'Repeat Context';
+            if (state === 'track') return 'Repeat Track';
+            return 'Repeat';
+        }
+
+        function renderShuffleButton() {
+            const button = document.getElementById('shuffleBtn');
+            if (!button) return;
+            button.textContent = shuffleOn ? 'Shuffle On' : 'Shuffle';
+            button.setAttribute('aria-pressed', shuffleOn ? 'true' : 'false');
+        }
+
+        function renderRepeatButton() {
+            const button = document.getElementById('repeatBtn');
+            if (!button) return;
+            button.dataset.repeat = repeatState;
+            button.textContent = repeatLabel(repeatState);
+        }
+
+        function nextRepeatState(state) {
+            const button = document.getElementById('repeatBtn');
+            const cycle = (button && button.dataset.cycle ? button.dataset.cycle : 'off context track').split(' ');
+            const index = cycle.indexOf(state);
+            if (index === -1) return cycle[0] || 'off';
+            return cycle[(index + 1) % cycle.length];
+        }
+
+        function applyPlaybackModes(data) {
+            if (playbackModeBusy || !data) return;
+            if (typeof data.shuffle_state === 'boolean') {
+                shuffleOn = data.shuffle_state;
+                renderShuffleButton();
+            }
+            if (data.repeat_state === 'off' || data.repeat_state === 'context' || data.repeat_state === 'track') {
+                repeatState = data.repeat_state;
+                renderRepeatButton();
+            }
+            const volume = data.device && data.device.volume_percent;
+            if (!volumeDragging && typeof volume === 'number') {
+                const range = document.getElementById('volumeRange');
+                if (range) range.value = String(volume);
+            }
+        }
+
+        function postPlaybackMode(url) {
+            playbackModeBusy += 1;
+            return fetch(url, { method: 'POST' })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok || data.error) {
+                        const status = document.getElementById('statusIndicator');
+                        if (status) status.textContent = 'Error: ' + (data.error || 'Playback mode failed');
+                        return null;
+                    }
+                    return data;
+                })
+                .catch(error => {
+                    const status = document.getElementById('statusIndicator');
+                    if (status) status.textContent = 'Error: ' + error;
+                    return null;
+                })
+                .finally(() => {
+                    playbackModeBusy -= 1;
+                });
+        }
+
+        function toggleShuffle() {
+            const next = !shuffleOn;
+            shuffleOn = next;
+            renderShuffleButton();
+            postPlaybackMode(`/shuffle/?state=${next ? 'true' : 'false'}`).then(data => {
+                if (data) return;
+                shuffleOn = !next;
+                renderShuffleButton();
+            });
+        }
+
+        function cycleRepeat() {
+            const next = nextRepeatState(repeatState);
+            const previous = repeatState;
+            repeatState = next;
+            renderRepeatButton();
+            postPlaybackMode(`/repeat/?state=${next}`).then(data => {
+                if (data) return;
+                repeatState = previous;
+                renderRepeatButton();
+            });
+        }
+
+        function commitVolume(value) {
+            volumeDragging = false;
+            const volume = Math.max(0, Math.min(100, parseInt(value, 10)));
+            if (Number.isNaN(volume)) return;
+            postPlaybackMode(`/volume/?volume_percent=${volume}`);
         }
 
         function handleSearchKeyPress(event) {
@@ -988,10 +1128,13 @@
 
             const menu = document.createElement('div');
             menu.className = 'track-context-menu';
+            menu.dataset.trackId = trackId || '';
+            menu.dataset.albumId = btn.dataset.albumId || '';
             menu.innerHTML = `
                 <div class="track-context-menu-title">${trackName}</div>
                 <button class="track-context-menu-item" data-action="play">▶ Play Now</button>
                 <button class="track-context-menu-item" data-action="queue">➕ Add to Queue</button>
+                {% include "player/features/track_actions/menu_items.html" %}
             `;
             document.body.appendChild(menu);
 
@@ -1195,6 +1338,89 @@
             }).join('');
         }
 
+        function applyPlaylistMark(playlistId, mark) {
+            const root = document.getElementById('playlistMark');
+            if (!root) return;
+            root.hidden = false;
+            root.dataset.playlistId = playlistId;
+            const idLabel = document.getElementById('playlistMarkId');
+            if (idLabel) idLabel.textContent = playlistId;
+            const pin = document.getElementById('playlistPin');
+            const pinned = !!(mark && mark.pinned);
+            if (pin) {
+                pin.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+                pin.textContent = pinned ? 'Unpin' : 'Pin';
+            }
+            const tag = document.getElementById('playlistTag');
+            if (tag) tag.value = (mark && mark.tag) || '';
+        }
+
+        function hidePlaylistMark() {
+            const root = document.getElementById('playlistMark');
+            if (!root) return;
+            root.hidden = true;
+            root.dataset.playlistId = '';
+            const idLabel = document.getElementById('playlistMarkId');
+            if (idLabel) idLabel.textContent = '';
+        }
+
+        function decoratePlaylistMark(playlistId) {
+            applyPlaylistMark(playlistId, null);
+            fetch('/playlist-pins/marks/')
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    const root = document.getElementById('playlistMark');
+                    if (!root || root.dataset.playlistId !== playlistId) return;
+                    const marks = (data && data.marks) || [];
+                    const mark = marks.find(function (item) {
+                        return item.playlist_id === playlistId;
+                    });
+                    applyPlaylistMark(playlistId, mark || { pinned: false, tag: '' });
+                })
+                .catch(function () {});
+        }
+
+        function togglePlaylistPin() {
+            const root = document.getElementById('playlistMark');
+            const pin = document.getElementById('playlistPin');
+            if (!root || !pin || !root.dataset.playlistId) return;
+            const pinned = pin.getAttribute('aria-pressed') !== 'true';
+            fetch('/playlist-pins/pin/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    playlist_id: root.dataset.playlistId,
+                    pinned: pinned,
+                }),
+            })
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    if (!data || data.error) return;
+                    if (root.dataset.playlistId !== data.playlist_id) return;
+                    applyPlaylistMark(data.playlist_id, data);
+                });
+        }
+
+        function savePlaylistTag() {
+            const root = document.getElementById('playlistMark');
+            const tag = document.getElementById('playlistTag');
+            if (!root || !tag || !root.dataset.playlistId) return;
+            fetch('/playlist-pins/tag/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    playlist_id: root.dataset.playlistId,
+                    tag: tag.value,
+                }),
+            })
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    if (!data || data.error) return;
+                    if (root.dataset.playlistId !== data.playlist_id) return;
+                    applyPlaylistMark(data.playlist_id, data);
+                });
+        }
+
         function viewPlaylist(playlistId) {
             // Hide playlists section, show detail view
             const playlistsSection = document.getElementById('playlistsSection');
@@ -1220,6 +1446,7 @@
                 if (backBtn) backBtn.textContent = '← Back to Playlists';
             }
             playlistDetailView.style.display = 'block';
+            decoratePlaylistMark(playlistId);
 
             // Load playlist details
             fetch(`/playlist-detail/?id=${playlistId}`)
@@ -1268,7 +1495,7 @@
                                                 <div class="track-artist">${track.artists.join(', ')}</div>
                                             </div>
                                             <div class="track-actions-col">
-                                                <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-playlist-id="${data.id}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                                <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-playlist-id="${data.id}" data-album-id="${track.album_id || ''}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
                                                 <div class="track-duration">${durationStr}</div>
                                             </div>
                                         </div>
@@ -1345,20 +1572,43 @@
                 });
         }
 
+        function albumCoverUrl(image) {
+            if (typeof image !== 'string') {
+                return '';
+            }
+            const trimmed = image.trim();
+            if (!/^https?:\/\//i.test(trimmed)) {
+                return '';
+            }
+            return trimmed;
+        }
+
         function displayAlbums(albums) {
             const grid = document.getElementById('albumsGrid');
             if (albums.length === 0) {
-                grid.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No albums found</div>';
+                grid.innerHTML = '<div class="album-card-empty">No albums found</div>';
                 return;
             }
 
             grid.innerHTML = albums.map(album => {
+                const name = album.name || 'Untitled album';
+                const safeName = escapeHtml(name);
+                const artists = Array.isArray(album.artists) ? album.artists : [];
+                const artistLabel = artists
+                    .filter(artist => typeof artist === 'string' && artist.trim())
+                    .map(artist => artist.trim())
+                    .join(', ');
+                const cover = albumCoverUrl(album.image);
+                const initial = escapeHtml((name.trim().charAt(0) || '?').toUpperCase());
+                const coverHtml = cover
+                    ? `<img src="${escapeHtml(cover)}" alt="" class="album-card-image" loading="lazy">`
+                    : `<span class="album-card-fallback" aria-hidden="true">${initial}</span>`;
                 return `
-                    <div class="album-item" onclick="viewAlbum('${album.id}')">
-                        <img src="${album.image || 'https://via.placeholder.com/180?text=No+Image'}" alt="${album.name}" class="album-image">
-                        <div class="album-name">${album.name}</div>
-                        <div class="album-info">${album.artists.join(', ')}</div>
-                    </div>
+                    <button type="button" class="album-card" onclick="viewAlbum('${escapeHtml(album.id)}')">
+                        <span class="album-card-cover">${coverHtml}</span>
+                        <span class="album-card-name">${safeName}</span>
+                        <span class="album-card-artist">${escapeHtml(artistLabel)}</span>
+                    </button>
                 `;
             }).join('');
         }
@@ -1388,6 +1638,7 @@
                 if (backBtn) backBtn.textContent = '← Back to Albums';
             }
             playlistDetailView.style.display = 'block';
+            hidePlaylistMark();
 
             // Load album details
             fetch(`/album-detail/?id=${albumId}`)
@@ -1436,7 +1687,7 @@
                                                 <div class="track-artist">${track.artists.join(', ')}</div>
                                             </div>
                                             <div class="track-actions-col">
-                                                <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                                <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-album-id="${track.album_id || ''}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
                                                 <div class="track-duration">${durationStr}</div>
                                             </div>
                                         </div>
@@ -1539,7 +1790,7 @@
                                     <div class="track-artist">${track.artists.join(', ')} • ${track.album}</div>
                                 </div>
                                 <div class="track-actions-col">
-                                    <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                    <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-album-id="${track.album_id || ''}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
                                     <div class="track-duration">${durationStr}</div>
                                 </div>
                             </div>
@@ -1633,6 +1884,8 @@
             if (!items.length) {
                 list.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No tracks played recently.</div>';
                 return;
+            } else if (tabName === 'home') {
+                loadHome();
             }
             list.innerHTML = items.map(function (item) {
                 const artists = (item.artists || []).join(', ');
@@ -1677,6 +1930,71 @@
                 });
         }
 
+        function loadHome() {
+            const list = document.getElementById('homeTracks');
+            if (!list) return;
+            list.innerHTML = '<div class="home-empty">Loading recently played songs...</div>';
+            fetch('/home/')
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    const data = result.data || {};
+                    if (!result.ok || data.error) {
+                        list.innerHTML = '<div class="home-error">' + homeErrorHtml(data) + '</div>';
+                        return;
+                    }
+                    renderHomeTracks(data.items || []);
+                })
+                .catch(function () {
+                    list.innerHTML = '<div class="home-error">Could not load recently played songs.</div>';
+                });
+        }
+
+        function homeErrorHtml(data) {
+            const message = escapeHtml((data && data.error) || 'Could not load recently played songs.');
+            if (data && data.code === 'needs_scope') {
+                return message + ' <a href="/login/?auth=1">Reconnect Spotify</a>';
+            }
+            return message;
+        }
+
+        function formatPlayedAt(value) {
+            if (!value) return '';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return value;
+            return date.toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+            });
+        }
+
+        function renderHomeTracks(items) {
+            const list = document.getElementById('homeTracks');
+            if (!list) return;
+            if (!items.length) {
+                list.innerHTML = '<div class="home-empty">No recently played songs.</div>';
+                return;
+            }
+            list.innerHTML = items.map(function (track) {
+                const artists = escapeHtml((track.artists || []).join(', '));
+                const album = track.album ? ' · ' + escapeHtml(track.album) : '';
+                const when = track.played_at
+                    ? '<div class="home-track-when">' + escapeHtml(formatPlayedAt(track.played_at)) + '</div>'
+                    : '';
+                const image = track.image
+                    ? '<img src="' + escapeHtml(track.image) + '" alt="" class="home-track-image">'
+                    : '';
+                return '<div class="home-track">' + image +
+                    '<div class="home-track-text"><div class="home-track-name">' + escapeHtml(track.name) + '</div>' +
+                    '<div class="home-track-artist">' + artists + album + '</div>' + when + '</div></div>';
+            }).join('');
+        }
+
         let feelActive = false;
         let feelTailUri = '';
         let feelAdvanceInFlight = false;
@@ -1696,12 +2014,15 @@
         }
 
         function updateFeelCombo() {
-            const labels = { sad: 'Sad', happy: 'Happy', mad: 'Mad' };
+            const labels = {
+                sad: 'Sad', happy: 'Happy', mad: 'Mad',
+                calm: 'Calm', focus: 'Focus', hype: 'Hype', romantic: 'Romantic',
+            };
             const selected = selectedFeelEmotions().map(function (key) { return labels[key]; });
             const combo = document.getElementById('feelCombo');
             if (!combo) return;
             if (!selected.length) {
-                combo.textContent = 'Select a feel. Combine two, or all three.';
+                combo.textContent = 'Select a feel. Combine any of them.';
             } else if (selected.length === 1) {
                 combo.textContent = selected[0] + '. Songs that carry this feel come first.';
             } else {
@@ -1791,7 +2112,7 @@
             const emotions = selectedFeelEmotions();
             const status = document.getElementById('feelStatus');
             if (!emotions.length) {
-                status.textContent = 'Choose sad, happy, mad, or a combination.';
+                status.textContent = 'Choose sad, happy, mad, calm, focus, hype, romantic, or a combination.';
                 return;
             }
             status.textContent = 'Reading your library in two calls...';
@@ -1966,7 +2287,7 @@
                                         <div class="discover-track-artist">${track.artists.join(', ')} • ${track.album}</div>
                                     </div>
                                     <div class="track-actions-col">
-                                        <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                        <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-album-id="${track.album_id || ''}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
                                         <div style="color: #1a1a1a; font-size: 0.85rem;">${durationStr}</div>
                                     </div>
                                 </div>
@@ -2038,6 +2359,7 @@
             loadPlaylists(true);
         });
     </script>
+    <script src="{% static 'player/js/shortcuts.js' %}"></script>
 </body>
 
 </html>
