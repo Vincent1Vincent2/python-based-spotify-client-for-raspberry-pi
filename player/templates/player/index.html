@@ -232,6 +232,7 @@
                     <button class="tab-button" onclick="switchTab('albums')" id="tab-albums">Albums</button>
                     <button class="tab-button" onclick="switchTab('songs')" id="tab-songs">Songs</button>
                     <button class="tab-button" onclick="switchTab('discover')" id="tab-discover">Discover</button>
+                    <button class="tab-button" onclick="switchTab('feel')" id="tab-feel">Feel</button>
                 </div>
 
                 <div class="tab-content active" id="content-playlists">
@@ -295,6 +296,36 @@
                         <div id="discoverContent">
                             <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading discoveries...</div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="content-feel">
+                    <div class="feel-section" id="feelSection">
+                        <div class="section-header">
+                            <h3>Feel radio</h3>
+                        </div>
+                        <p class="feel-note">
+                            Pick sad, happy, mad, or a combination. Two Spotify reads
+                            chain 30 songs from the playlist whose name matches that feel
+                            (or from saved songs). The name stays put — Sad Mad 01, Sad Mad 02 —
+                            and one search, built from the song that is ending, keeps it going.
+                        </p>
+                        <div class="feel-emotions" id="feelEmotions">
+                            <button type="button" class="feel-emotion" data-emotion="sad" aria-pressed="false">Sad</button>
+                            <button type="button" class="feel-emotion" data-emotion="happy" aria-pressed="false">Happy</button>
+                            <button type="button" class="feel-emotion" data-emotion="mad" aria-pressed="false">Mad</button>
+                        </div>
+                        <p class="feel-combo" id="feelCombo">Select a feel. Combine two, or all three.</p>
+                        <label class="feel-forever">
+                            <input type="checkbox" id="feelForever" checked>
+                            Keep going after the last song
+                        </label>
+                        <div class="feel-actions">
+                            <button class="btn" id="feelStart" type="button" onclick="startFeelRadio()">Start radio</button>
+                            <button class="btn" id="feelStop" type="button" onclick="stopFeelRadio()" style="display: none;">Stop radio</button>
+                        </div>
+                        <div id="feelStatus"></div>
+                        <div id="feelTracks"></div>
                     </div>
                 </div>
             </div>
@@ -632,6 +663,7 @@
                         console.log('Current playback error:', data.error);
                         return;
                     }
+                    maybeAdvanceFeel(data);
 
                     // Get the actual active device ID from the API response (the device that's actually playing)
                     const activeDeviceId = data.device?.id || data.debug?.device_id;
@@ -710,11 +742,13 @@
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
                 checkCurrentPlayback();
+                loadFeelStatus();
                 setInterval(checkCurrentPlayback, 3000); // Check every 3 seconds
             });
         } else {
             // DOM is already ready
             checkCurrentPlayback();
+            loadFeelStatus();
             setInterval(checkCurrentPlayback, 3000); // Check every 3 seconds
         }
 
@@ -1537,6 +1571,211 @@
             } else if (tabName === 'discover') {
                 loadDiscover(true);
             }
+        }
+
+        let feelActive = false;
+        let feelTailUri = '';
+        let feelAdvanceInFlight = false;
+        let feelSawTail = false;
+        let feelClaimedMarker = '';
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, function (char) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
+            });
+        }
+
+        function selectedFeelEmotions() {
+            return Array.from(document.querySelectorAll('.feel-emotion.is-on')).map(function (btn) {
+                return btn.dataset.emotion;
+            });
+        }
+
+        function updateFeelCombo() {
+            const labels = { sad: 'Sad', happy: 'Happy', mad: 'Mad' };
+            const selected = selectedFeelEmotions().map(function (key) { return labels[key]; });
+            const combo = document.getElementById('feelCombo');
+            if (!combo) return;
+            if (!selected.length) {
+                combo.textContent = 'Select a feel. Combine two, or all three.';
+            } else if (selected.length === 1) {
+                combo.textContent = selected[0] + '. Songs that carry this feel come first.';
+            } else {
+                combo.textContent = selected.join(' + ') + '. Songs that carry more than one come first.';
+            }
+        }
+
+        document.querySelectorAll('.feel-emotion').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const on = !btn.classList.contains('is-on');
+                btn.classList.toggle('is-on', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                updateFeelCombo();
+            });
+        });
+
+        function noteFeelState(data) {
+            if (!data) return;
+            feelActive = !!data.active && !!data.continue_forever && !data.extend_blocked;
+            feelTailUri = data.tail_uri || '';
+            const stopBtn = document.getElementById('feelStop');
+            if (stopBtn) stopBtn.style.display = data.active ? '' : 'none';
+        }
+
+        function feelErrorHtml(data) {
+            const message = escapeHtml((data && data.error) || 'Feel radio did not start.');
+            if (data && data.code === 'needs_scope') {
+                return message + ' <a href="/login/?auth=1">Reconnect Spotify</a>';
+            }
+            return message;
+        }
+
+        function renderFeelStatus(data) {
+            const status = document.getElementById('feelStatus');
+            const list = document.getElementById('feelTracks');
+            if (!status || !data) return;
+            const reads = (data.reads || []).map(escapeHtml).join(', ');
+            const snapshots = (data.snapshots || []).map(function (snap) {
+                return escapeHtml(snap.name) + ' (' + snap.count + ')';
+            }).join(', ');
+            let text = '';
+            if (data.radio_name) {
+                text += escapeHtml(data.radio_name);
+                if (data.source_name) text += ' from ' + escapeHtml(data.source_name);
+                text += '. ';
+            }
+            if (data.message) text += escapeHtml(data.message) + ' ';
+            if (snapshots) text += 'Saved ' + snapshots + '. ';
+            if (typeof data.pool_remaining === 'number') {
+                text += data.pool_remaining + ' songs still waiting in the local pile.';
+            }
+            status.innerHTML = text;
+            if (reads) {
+                status.innerHTML += '<div class="feel-reads">Spotify reads: ' + reads + '</div>';
+            }
+            if (data.query) {
+                status.innerHTML += '<div class="feel-reads">Search: ' + escapeHtml(data.query) + '</div>';
+            }
+            if (!data.tracks) return;
+            list.innerHTML = data.tracks.map(function (track) {
+                const artists = (track.artists || []).join(', ');
+                return '<div class="feel-track"><strong>' + escapeHtml(track.name) + '</strong> · ' + escapeHtml(artists) + '</div>';
+            }).join('');
+        }
+
+        function loadFeelStatus() {
+            fetch('/feel/status/')
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    if (!data || data.error || !data.active) return;
+                    noteFeelState(data);
+                    renderFeelStatus(data);
+                    (data.emotions || []).forEach(function (emotion) {
+                        const btn = document.querySelector('.feel-emotion[data-emotion="' + emotion + '"]');
+                        if (!btn) return;
+                        btn.classList.add('is-on');
+                        btn.setAttribute('aria-pressed', 'true');
+                    });
+                    const forever = document.getElementById('feelForever');
+                    if (forever) forever.checked = !!data.continue_forever;
+                    updateFeelCombo();
+                })
+                .catch(function () {});
+        }
+
+        function startFeelRadio() {
+            const emotions = selectedFeelEmotions();
+            const status = document.getElementById('feelStatus');
+            if (!emotions.length) {
+                status.textContent = 'Choose sad, happy, mad, or a combination.';
+                return;
+            }
+            status.textContent = 'Reading your library in two calls...';
+            fetch('/feel/start/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    emotions: emotions,
+                    continue_forever: document.getElementById('feelForever').checked,
+                    device_id: useWebPlayer ? (deviceId || null) : null,
+                }),
+            })
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    if (!result.ok || result.data.error) {
+                        status.innerHTML = feelErrorHtml(result.data);
+                        return;
+                    }
+                    noteFeelState(result.data);
+                    renderFeelStatus(result.data);
+                })
+                .catch(function () {
+                    status.textContent = 'Feel radio did not start.';
+                });
+        }
+
+        function stopFeelRadio() {
+            fetch('/feel/stop/', { method: 'POST' })
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    feelActive = false;
+                    feelTailUri = '';
+                    const stopBtn = document.getElementById('feelStop');
+                    if (stopBtn) stopBtn.style.display = 'none';
+                    const status = document.getElementById('feelStatus');
+                    if (status) status.textContent = data.message || 'Feel radio stopped.';
+                });
+        }
+
+        function maybeAdvanceFeel(playback) {
+            if (!feelActive || feelAdvanceInFlight || !playback) return;
+            const track = playback.track;
+            if (track && track.uri) {
+                feelSawTail = track.uri === feelTailUri;
+            }
+            const ended = !track;
+            const remaining = track ? (track.duration_ms || 0) - (track.progress_ms || 0) : 0;
+            const atTail = !!(track && track.uri && track.uri === feelTailUri && remaining <= 20000);
+            // An empty player on page load is not the radio ending. Only
+            // continue after this page has actually seen the last queued song.
+            if (ended && !feelSawTail) return;
+            if (ended && feelClaimedMarker) return;
+            if (!ended && !atTail) return;
+            const marker = track && track.uri ? track.uri : 'ended';
+            if (feelClaimedMarker === marker) return;
+            feelClaimedMarker = marker;
+            feelAdvanceInFlight = true;
+            fetch('/feel/advance/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    uri: track ? track.uri : '',
+                    remaining_ms: remaining,
+                    ended: ended,
+                    device_id: useWebPlayer ? (deviceId || null) : null,
+                }),
+            })
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    feelAdvanceInFlight = false;
+                    if (!data || data.error) {
+                        feelClaimedMarker = '';
+                        return;
+                    }
+                    noteFeelState(data);
+                    if (data.extended) {
+                        feelSawTail = false;
+                        renderFeelStatus(data);
+                    }
+                })
+                .catch(function () {
+                    feelAdvanceInFlight = false;
+                    feelClaimedMarker = '';
+                });
         }
 
         function loadDiscover(reset = false) {

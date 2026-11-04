@@ -10,10 +10,17 @@ from .spotify_api import (
     SpotifyAPI, get_spotify_api, capture_playback_snapshot, transfer_with_resume,
     get_active_account, fetch_spotify_profile, link_or_update_account,
 )
+from .feel import FeelError, FeelScopeError
+from .feel_radio import advance_feel_radio, feel_status, start_feel_radio, stop_feel_radio
 from .models import SpotifyAccount
 
 
-SPOTIFY_SCOPE = 'user-modify-playback-state user-read-playback-state user-read-currently-playing user-read-playback-position streaming playlist-read-private playlist-read-collaborative user-library-read'
+SPOTIFY_SCOPE = (
+    'user-modify-playback-state user-read-playback-state '
+    'user-read-currently-playing user-read-playback-position streaming '
+    'playlist-read-private playlist-read-collaborative '
+    'playlist-modify-private user-library-read'
+)
 
 
 def get_spotify_client(request):
@@ -428,6 +435,7 @@ def current_playback(request):
                 
                 track_data = {
                     'id': item.get('id'),
+                    'uri': item.get('uri'),
                     'name': item.get('name', 'Unknown Track'),
                     'artists': [artist.get('name', 'Unknown Artist') for artist in artists],
                     'album': album.get('name', 'Unknown Album'),
@@ -1300,3 +1308,117 @@ def play_album(request):
         return JsonResponse({'status': 'playing', 'album_id': album_id})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
+
+
+def _feel_account(request):
+    api = get_spotify_api(request)
+    account = get_active_account(request)
+    if not api or not account:
+        return None, None
+    return api, account
+
+
+def _feel_device(request, explicit):
+    if explicit:
+        return explicit
+    if request.session.get('use_web_player'):
+        return request.session.get('web_player_device_id')
+    return request.session.get('selected_device_id')
+
+
+def _feel_json_body(request):
+    if not request.body:
+        return {}
+    try:
+        payload = json.loads(request.body.decode() or '{}')
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _feel_error(exc):
+    status = 403 if isinstance(exc, FeelScopeError) else 400
+    return JsonResponse({'error': str(exc), 'code': exc.code}, status=status)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def feel_status_view(request):
+    """Current feel radio, from the database. No Spotify call."""
+    _api, account = _feel_account(request)
+    if not account:
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
+    return JsonResponse(feel_status(account))
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def feel_start_view(request):
+    """
+    Build and play a feel radio.
+    Spotify reads: GET /me/playlists, then either that playlist's tracks
+    or GET /me/tracks. Nothing else is read.
+    """
+    api, account = _feel_account(request)
+    if not api or not account:
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
+    payload = _feel_json_body(request)
+    if payload is None:
+        return JsonResponse({'error': 'Expected JSON'}, status=400)
+    device_id = _feel_device(request, payload.get('device_id'))
+    if not device_id:
+        if request.session.get('use_web_player'):
+            message = 'The browser player is still connecting. Try again in a moment.'
+        else:
+            message = 'No device selected'
+        return JsonResponse({'error': message, 'code': 'no_device'}, status=400)
+    try:
+        result = start_feel_radio(
+            api,
+            account,
+            emotions=payload.get('emotions') or [],
+            device_id=device_id,
+            continue_forever=payload.get('continue_forever', True),
+        )
+    except FeelError as exc:
+        return _feel_error(exc)
+    return JsonResponse(result)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def feel_advance_view(request):
+    """Extend the radio when the last queued song is about to end."""
+    api, account = _feel_account(request)
+    if not api or not account:
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
+    payload = _feel_json_body(request)
+    if payload is None:
+        return JsonResponse({'error': 'Expected JSON'}, status=400)
+    remaining = payload.get('remaining_ms')
+    try:
+        remaining_ms = None if remaining is None else int(remaining)
+    except (TypeError, ValueError):
+        remaining_ms = None
+    try:
+        result = advance_feel_radio(
+            api,
+            account,
+            device_id=_feel_device(request, payload.get('device_id')),
+            uri=payload.get('uri') or '',
+            remaining_ms=remaining_ms,
+            ended=bool(payload.get('ended')),
+        )
+    except FeelError as exc:
+        return _feel_error(exc)
+    return JsonResponse(result)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def feel_stop_view(request):
+    """Stop extending. Playlists already saved stay in the library."""
+    _api, account = _feel_account(request)
+    if not account:
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
+    return JsonResponse(stop_feel_radio(account))
