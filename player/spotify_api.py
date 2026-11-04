@@ -561,6 +561,20 @@ class SpotifyAPI:
             params['device_id'] = device_id
         return self.put('me/player/shuffle', params=params)
 
+    def set_repeat(self, state, device_id=None):
+        """Repeat mode off, context, or track. One PUT /me/player/repeat."""
+        params = {'state': state}
+        if device_id:
+            params['device_id'] = device_id
+        return self.put('me/player/repeat', params=params)
+
+    def set_volume(self, volume_percent, device_id=None):
+        """Volume 0-100. One PUT /me/player/volume."""
+        params = {'volume_percent': int(volume_percent)}
+        if device_id:
+            params['device_id'] = device_id
+        return self.put('me/player/volume', params=params)
+
 
 def get_active_account(request):
     """

@@ -181,10 +181,14 @@
                     style="font-size: 0.9rem; padding: 8px 15px;">Refresh Playback Info</button>
             </div>
 
-            <div class="controls">
+            <div class="controls" style="flex-wrap: wrap;">
                 <button class="btn btn-previous" id="prevBtn" onclick="previousTrack()" disabled>⏮ Previous</button>
                 <button class="btn btn-play" id="playBtn" onclick="togglePlayback()" disabled>▶ Play</button>
                 <button class="btn btn-next" id="nextBtn" onclick="nextTrack()" disabled>⏭ Next</button>
+                <button class="btn" id="shuffleBtn" onclick="toggleShuffle()" disabled>Shuffle</button>
+                <button class="btn" id="repeatBtn" onclick="cycleRepeat()" data-cycle="off context track" data-repeat="off" disabled>Repeat</button>
+                <span style="align-self: center;">Volume</span>
+                <input type="range" id="volumeRange" min="0" max="100" value="0" aria-label="Volume" oninput="volumeDragging = true" onchange="commitVolume(this.value)" disabled style="align-self: center;">
             </div>
 
             <div class="device-selector">
@@ -357,6 +361,10 @@
         let progressCurrentMs = 0;
         let isDraggingProgress = false;
         let progressTickInterval = null;
+        let shuffleOn = false;
+        let repeatState = 'off';
+        let volumeDragging = false;
+        let playbackModeBusy = 0;
 
         window.onSpotifyWebPlaybackSDKReady = () => {
             // Always initialize the web player to get device ID, even if not currently selected
@@ -381,6 +389,7 @@
                 document.getElementById('prevBtn').disabled = false;
                 document.getElementById('playBtn').disabled = false;
                 document.getElementById('nextBtn').disabled = false;
+                enableModeControls();
             }
         };
 
@@ -397,6 +406,7 @@
                 document.getElementById('prevBtn').disabled = false;
                 document.getElementById('playBtn').disabled = false;
                 document.getElementById('nextBtn').disabled = false;
+                enableModeControls();
             });
 
             player.addListener('not_ready', ({ device_id }) => {
@@ -664,6 +674,7 @@
                         return;
                     }
                     maybeAdvanceFeel(data);
+                    applyPlaybackModes(data);
 
                     // Get the actual active device ID from the API response (the device that's actually playing)
                     const activeDeviceId = data.device?.id || data.debug?.device_id;
@@ -785,6 +796,112 @@
                 fetch('/previous/', { method: 'POST' })
                     .then(response => response.json());
             }
+        }
+
+        function enableModeControls() {
+            const shuffleBtn = document.getElementById('shuffleBtn');
+            const repeatBtn = document.getElementById('repeatBtn');
+            const volumeRange = document.getElementById('volumeRange');
+            if (shuffleBtn) shuffleBtn.disabled = false;
+            if (repeatBtn) repeatBtn.disabled = false;
+            if (volumeRange) volumeRange.disabled = false;
+        }
+
+        function repeatLabel(state) {
+            if (state === 'context') return 'Repeat Context';
+            if (state === 'track') return 'Repeat Track';
+            return 'Repeat';
+        }
+
+        function renderShuffleButton() {
+            const button = document.getElementById('shuffleBtn');
+            if (!button) return;
+            button.textContent = shuffleOn ? 'Shuffle On' : 'Shuffle';
+            button.setAttribute('aria-pressed', shuffleOn ? 'true' : 'false');
+        }
+
+        function renderRepeatButton() {
+            const button = document.getElementById('repeatBtn');
+            if (!button) return;
+            button.dataset.repeat = repeatState;
+            button.textContent = repeatLabel(repeatState);
+        }
+
+        function nextRepeatState(state) {
+            const button = document.getElementById('repeatBtn');
+            const cycle = (button && button.dataset.cycle ? button.dataset.cycle : 'off context track').split(' ');
+            const index = cycle.indexOf(state);
+            if (index === -1) return cycle[0] || 'off';
+            return cycle[(index + 1) % cycle.length];
+        }
+
+        function applyPlaybackModes(data) {
+            if (playbackModeBusy || !data) return;
+            if (typeof data.shuffle_state === 'boolean') {
+                shuffleOn = data.shuffle_state;
+                renderShuffleButton();
+            }
+            if (data.repeat_state === 'off' || data.repeat_state === 'context' || data.repeat_state === 'track') {
+                repeatState = data.repeat_state;
+                renderRepeatButton();
+            }
+            const volume = data.device && data.device.volume_percent;
+            if (!volumeDragging && typeof volume === 'number') {
+                const range = document.getElementById('volumeRange');
+                if (range) range.value = String(volume);
+            }
+        }
+
+        function postPlaybackMode(url) {
+            playbackModeBusy += 1;
+            return fetch(url, { method: 'POST' })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok || data.error) {
+                        const status = document.getElementById('statusIndicator');
+                        if (status) status.textContent = 'Error: ' + (data.error || 'Playback mode failed');
+                        return null;
+                    }
+                    return data;
+                })
+                .catch(error => {
+                    const status = document.getElementById('statusIndicator');
+                    if (status) status.textContent = 'Error: ' + error;
+                    return null;
+                })
+                .finally(() => {
+                    playbackModeBusy -= 1;
+                });
+        }
+
+        function toggleShuffle() {
+            const next = !shuffleOn;
+            shuffleOn = next;
+            renderShuffleButton();
+            postPlaybackMode(`/shuffle/?state=${next ? 'true' : 'false'}`).then(data => {
+                if (data) return;
+                shuffleOn = !next;
+                renderShuffleButton();
+            });
+        }
+
+        function cycleRepeat() {
+            const next = nextRepeatState(repeatState);
+            const previous = repeatState;
+            repeatState = next;
+            renderRepeatButton();
+            postPlaybackMode(`/repeat/?state=${next}`).then(data => {
+                if (data) return;
+                repeatState = previous;
+                renderRepeatButton();
+            });
+        }
+
+        function commitVolume(value) {
+            volumeDragging = false;
+            const volume = Math.max(0, Math.min(100, parseInt(value, 10)));
+            if (Number.isNaN(volume)) return;
+            postPlaybackMode(`/volume/?volume_percent=${volume}`);
         }
 
         function handleSearchKeyPress(event) {

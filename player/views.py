@@ -421,10 +421,13 @@ def current_playback(request):
                     'is_playing': is_playing,
                     'track': episode_data,
                     'type': 'episode',
+                    'shuffle_state': playback.get('shuffle_state'),
+                    'repeat_state': playback.get('repeat_state'),
                     'device': {
                         'id': device.get('id'),
                         'name': device.get('name'),
                         'type': device.get('type'),
+                        'volume_percent': device.get('volume_percent'),
                     }
                 })
             else:
@@ -449,10 +452,13 @@ def current_playback(request):
                     'is_playing': is_playing,
                     'track': track_data,
                     'type': 'track',
+                    'shuffle_state': playback.get('shuffle_state'),
+                    'repeat_state': playback.get('repeat_state'),
                     'device': {
                         'id': device.get('id'),
                         'name': device.get('name'),
                         'type': device.get('type'),
+                        'volume_percent': device.get('volume_percent'),
                     }
                 })
         
@@ -462,10 +468,13 @@ def current_playback(request):
             'is_playing': is_playing,
             'track': None,
             'type': None,
+            'shuffle_state': playback.get('shuffle_state'),
+            'repeat_state': playback.get('repeat_state'),
             'device': {
                 'id': device.get('id'),
                 'name': device.get('name'),
                 'type': device.get('type'),
+                'volume_percent': device.get('volume_percent'),
             } if device else None
         })
         
