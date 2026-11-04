@@ -310,6 +310,35 @@ class FeelRadioTests(TestCase):
         self.assertNotIn('"public": true', raw)
 
 
+class PlayerShellRenderTests(TestCase):
+    def test_index_template_renders_controls_and_accent(self):
+        from pathlib import Path
+
+        from django.template.loader import render_to_string
+
+        html = render_to_string(
+            "player/index.html",
+            {
+                "client_id": "client-id",
+                "access_token": "access-token",
+                "use_web_player": True,
+                "devices": [],
+                "accounts": [],
+                "active_account": None,
+                "selected_device_id": None,
+            },
+        )
+        self.assertIn("playBtn", html)
+        self.assertIn("feelStart", html)
+        self.assertIn('id="searchInput"', html)
+        self.assertIn('id="progressTrack"', html)
+        self.assertIn('id="deviceList"', html)
+        self.assertIn('id="tab-feel"', html)
+        css_path = Path(__file__).resolve().parent / "static" / "player" / "css" / "variables.css"
+        stylesheet = css_path.read_text(encoding="utf-8")
+        self.assertTrue("--color-accent" in html or "--color-accent" in stylesheet)
+
+
 class FeelPageTests(TestCase):
     def test_player_page_shows_the_feel_tab_without_calling_spotify_again(self):
         import time
