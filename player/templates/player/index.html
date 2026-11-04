@@ -165,6 +165,7 @@
 
             <div class="track-info" id="trackInfo">
                 <div class="track-name">No track playing</div>
+                <div class="playback-context" id="playbackContext" hidden></div>
             </div>
 
             <div class="progress-container disabled" id="progressContainer">
@@ -419,6 +420,80 @@
             player.connect();
         }
 
+        // Short line under the track title. Labels match context_label().
+        // The playback payload only has type and uri; names are not fetched.
+        let playbackContext = null;
+
+        function playbackContextLabel(context) {
+            if (!context || !context.type) return null;
+            const labels = {
+                playlist: 'Playlist',
+                album: 'Album',
+                artist: 'Artist',
+                show: 'Show',
+            };
+            return labels[context.type] || null;
+        }
+
+        function playbackContextId(context) {
+            if (!context || typeof context.uri !== 'string' || !context.type) return null;
+            const parts = context.uri.split(':');
+            if (parts.length < 3 || parts[0] !== 'spotify') return null;
+            const id = parts[parts.length - 1];
+            if (!id || parts.indexOf(context.type) === -1) return null;
+            return id;
+        }
+
+        function renderPlaybackContext() {
+            const trackInfo = document.getElementById('trackInfo');
+            if (!trackInfo) return;
+            const nameEl = trackInfo.querySelector('.track-name');
+            const label = playbackContextLabel(playbackContext);
+            let line = trackInfo.querySelector('#playbackContext') || trackInfo.querySelector('.playback-context');
+
+            if (!nameEl || !label) {
+                if (line) line.hidden = true;
+                return;
+            }
+
+            const type = playbackContext.type;
+            const id = playbackContextId(playbackContext);
+            const openPlaylist = type === 'playlist' && id && typeof viewPlaylist === 'function';
+            const openAlbum = type === 'album' && id && typeof viewAlbum === 'function';
+            const clickable = !!(openPlaylist || openAlbum);
+            const tag = clickable ? 'button' : 'div';
+
+            if (!line || line.tagName !== tag.toUpperCase()) {
+                const fresh = document.createElement(tag);
+                fresh.id = 'playbackContext';
+                fresh.className = 'playback-context';
+                if (line) {
+                    line.replaceWith(fresh);
+                } else {
+                    nameEl.insertAdjacentElement('afterend', fresh);
+                }
+                line = fresh;
+            } else if (nameEl.nextElementSibling !== line) {
+                nameEl.insertAdjacentElement('afterend', line);
+            }
+
+            line.hidden = false;
+            line.textContent = label;
+            line.classList.toggle('playback-context-button', clickable);
+            if (clickable) {
+                line.type = 'button';
+                line.onclick = function () {
+                    if (type === 'playlist' && typeof viewPlaylist === 'function') {
+                        viewPlaylist(id);
+                    } else if (type === 'album' && typeof viewAlbum === 'function') {
+                        viewAlbum(id);
+                    }
+                };
+            } else {
+                line.onclick = null;
+            }
+        }
+
         function updateTrackDisplay() {
             if (currentTrack) {
                 const trackInfo = document.getElementById('trackInfo');
@@ -442,6 +517,7 @@
                         <div class="track-album">${currentTrack.album.name}</div>
                     `;
                 }
+                renderPlaybackContext();
             }
         }
 
@@ -636,6 +712,7 @@
                         }
                     }
                 }
+                renderPlaybackContext();
             } else {
                 console.error('updateTrackDisplayFromAPI called with null/undefined trackData');
                 currentTrackData = null;
@@ -682,12 +759,15 @@
 
                     // If we have track/episode data from API
                     if (data.track) {
+                        playbackContext = data.context || null;
                         // If the active device is NOT the web player, always update from API
                         // OR if web player is active but we don't have SDK track data yet
                         if (!isWebPlayerActive || !currentTrack) {
                             console.log('Updating display from API track data');
                             updateTrackDisplayFromAPI(data.track);
                             updatePlayButtonFromAPI(data.is_playing);
+                        } else {
+                            renderPlaybackContext();
                         }
                         // Scrub bar: the web player's own progress comes from
                         // player_state_changed (more frequent/accurate), so
@@ -704,6 +784,7 @@
                             // Only show generic episode if web player is NOT active OR web player doesn't have track data
                             if (!isWebPlayerActive || !currentTrack) {
                                 console.log('Showing generic episode');
+                                playbackContext = data.context || null;
                                 const episodeData = {
                                     name: 'Podcast Episode',
                                     show: 'Unknown Podcast',
@@ -719,6 +800,7 @@
                         } else if (!data.track && !currentTrack) {
                             // Nothing playing anywhere
                             console.log('Nothing playing');
+                            playbackContext = null;
                             const trackInfo = document.getElementById('trackInfo');
                             if (trackInfo) {
                                 let message = 'No track playing';
@@ -726,6 +808,7 @@
                                     message += ` (Device: ${data.debug.device_name || 'Unknown'}, Playing: ${data.debug.is_playing})`;
                                 }
                                 trackInfo.innerHTML = `<div class="track-name">${message}</div>`;
+                                renderPlaybackContext();
                             }
                             updatePlayButtonFromAPI(false);
                             setProgress(0, 0, false);
