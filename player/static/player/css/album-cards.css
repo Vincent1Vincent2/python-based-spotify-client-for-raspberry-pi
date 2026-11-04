@@ -1,0 +1,118 @@
+/* Album cover cards. Overrides the 180px grid in player.css.
+   Narrow screens get two columns. Wider screens get more. */
+
+@media (max-width: 639px) {
+    #content-albums.tab-content {
+        padding: 16px 8px 20px;
+    }
+}
+
+#albumsGrid.albums-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+}
+
+@media (min-width: 640px) {
+    #albumsGrid.albums-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 900px) {
+    #albumsGrid.albums-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+.album-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    min-width: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--transition);
+    overflow: hidden;
+}
+
+.album-card:hover,
+.album-card:focus-visible {
+    background: var(--color-text);
+    outline: none;
+}
+
+.album-card-cover {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    background: var(--color-gray-light);
+    border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.album-card-image,
+.album-card-fallback {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.album-card-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.album-card-name {
+    display: -webkit-box;
+    min-height: 2.5em;
+    margin: 8px 8px 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--color-text);
+}
+
+.album-card-artist {
+    margin: 2px 8px 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    color: var(--color-gray);
+}
+
+.album-card:hover .album-card-name,
+.album-card:focus-visible .album-card-name,
+.album-card:hover .album-card-artist,
+.album-card:focus-visible .album-card-artist {
+    color: var(--color-bg);
+}
+
+.album-card-empty {
+    grid-column: 1 / -1;
+    padding: 20px;
+    text-align: center;
+    opacity: 0.7;
+}

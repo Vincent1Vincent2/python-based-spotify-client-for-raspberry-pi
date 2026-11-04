@@ -1,0 +1,66 @@
+<div
+    class="playlist-mark"
+    id="playlistMark"
+    data-playlist-id="{{ playlist_id|default:'' }}"
+    {% if not playlist_id %}hidden{% endif %}
+>
+    <p class="playlist-mark-target">
+        Playlist <span id="playlistMarkId">{{ playlist_id|default:"" }}</span>
+    </p>
+    <button
+        type="button"
+        class="btn playlist-pin"
+        id="playlistPin"
+        aria-pressed="false"
+        onclick="togglePlaylistPin()"
+    >Pin</button>
+    <label class="playlist-tag-label" for="playlistTag">Tag</label>
+    <input
+        type="text"
+        class="playlist-tag"
+        id="playlistTag"
+        name="tag"
+        maxlength="40"
+        placeholder="Tag this playlist"
+        autocomplete="off"
+        onkeydown="if (event.key === 'Enter') { event.preventDefault(); savePlaylistTag(); }"
+    >
+    <button type="button" class="btn playlist-tag-save" onclick="savePlaylistTag()">Save tag</button>
+</div>
+<style>
+    .playlist-mark {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        margin: 16px 0;
+    }
+
+    .playlist-mark[hidden] {
+        display: none;
+    }
+
+    .playlist-mark-target {
+        margin: 0;
+        font-size: 0.95rem;
+    }
+
+    .playlist-pin[aria-pressed="true"] {
+        background: var(--color-text);
+        color: var(--color-bg);
+    }
+
+    .playlist-tag-label {
+        font-size: 0.95rem;
+    }
+
+    .playlist-tag {
+        background: var(--color-bg);
+        color: var(--color-text);
+        border: var(--border-width) solid var(--color-border);
+        border-radius: var(--border-radius);
+        padding: 10px 12px;
+        font-size: 1rem;
+        min-width: 12rem;
+    }
+</style>

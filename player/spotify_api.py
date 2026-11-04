@@ -221,16 +221,17 @@ class SpotifyAPI:
             params['additional_types'] = additional_types
         return self.get('me/player/currently-playing', params=params if params else None)
     
-    def search(self, q, type='track', limit=20, offset=0):
+    def search(self, q, type='track', limit=20, offset=0, market=None):
         """
-        Search for tracks, albums, artists, playlists.
-        
+        Search the Spotify catalog. One GET /search.
+
         Args:
             q: Search query
-            type: Comma-separated list of types (track, album, artist, playlist)
-            limit: Number of results (max 50)
+            type: Item type, or a comma-separated list for older callers
+            limit: Number of results (Spotify allows up to 50)
             offset: Offset for pagination
-        
+            market: Optional ISO 3166-1 alpha-2 country code
+
         Returns:
             Response object
         """
@@ -238,8 +239,10 @@ class SpotifyAPI:
             'q': q,
             'type': type,
             'limit': limit,
-            'offset': offset
+            'offset': offset,
         }
+        if market:
+            params['market'] = market
         return self.get('search', params=params)
     
     def transfer_playback(self, device_id, force_play=False):
@@ -560,6 +563,20 @@ class SpotifyAPI:
         if device_id:
             params['device_id'] = device_id
         return self.put('me/player/shuffle', params=params)
+
+    def set_repeat(self, state, device_id=None):
+        """Repeat mode off, context, or track. One PUT /me/player/repeat."""
+        params = {'state': state}
+        if device_id:
+            params['device_id'] = device_id
+        return self.put('me/player/repeat', params=params)
+
+    def set_volume(self, volume_percent, device_id=None):
+        """Volume 0-100. One PUT /me/player/volume."""
+        params = {'volume_percent': int(volume_percent)}
+        if device_id:
+            params['device_id'] = device_id
+        return self.put('me/player/volume', params=params)
 
 
 def get_active_account(request):
