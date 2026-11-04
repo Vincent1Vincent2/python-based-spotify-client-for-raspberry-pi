@@ -3,7 +3,7 @@ Edit private playlists through the Development Mode Web API.
 
 Creates use POST /me/playlists with public false. Name and description
 use PUT /playlists/{id}. Removing a playlist is DELETE
-/playlists/{id}/followers, which only takes it out of the library.
+DELETE /me/library with the playlist URI, which only takes it out of the library.
 Items use /playlists/{id}/items, 50 at a time. Reordering sends
 range_start, insert_before, and range_length, never a replacement list.
 """

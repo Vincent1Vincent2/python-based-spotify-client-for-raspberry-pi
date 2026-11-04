@@ -572,10 +572,16 @@ class SpotifyAPI:
         """
         Remove a playlist from the current user's library.
 
-        DELETE /playlists/{id}/followers. This unfollows the playlist.
-        Spotify has no endpoint that erases the playlist itself.
+        DELETE /me/library?uris=spotify:playlist:{id}. Development Mode
+        replaced DELETE /playlists/{id}/followers with this. Spotify still
+        has no endpoint that erases the playlist itself.
         """
-        return self.delete(f'playlists/{playlist_id}/followers')
+        raw = str(playlist_id).strip()
+        if raw.startswith('spotify:playlist:'):
+            uri = raw
+        else:
+            uri = f'spotify:playlist:{raw}'
+        return self.delete('me/library', params={'uris': uri})
 
     def get_playlist_items(self, playlist_id, limit=50, offset=0):
         """
