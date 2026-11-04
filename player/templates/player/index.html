@@ -8,6 +8,7 @@
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
     {% load static %}
     <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
+    <link rel="stylesheet" href="{% static 'player/css/album-cards.css' %}">
     <style>
         /* Scrub bar - scoped here rather than player.css so this
            feature stays self-contained; can be moved into player.css
@@ -1333,20 +1334,43 @@
                 });
         }
 
+        function albumCoverUrl(image) {
+            if (typeof image !== 'string') {
+                return '';
+            }
+            const trimmed = image.trim();
+            if (!/^https?:\/\//i.test(trimmed)) {
+                return '';
+            }
+            return trimmed;
+        }
+
         function displayAlbums(albums) {
             const grid = document.getElementById('albumsGrid');
             if (albums.length === 0) {
-                grid.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No albums found</div>';
+                grid.innerHTML = '<div class="album-card-empty">No albums found</div>';
                 return;
             }
 
             grid.innerHTML = albums.map(album => {
+                const name = album.name || 'Untitled album';
+                const safeName = escapeHtml(name);
+                const artists = Array.isArray(album.artists) ? album.artists : [];
+                const artistLabel = artists
+                    .filter(artist => typeof artist === 'string' && artist.trim())
+                    .map(artist => artist.trim())
+                    .join(', ');
+                const cover = albumCoverUrl(album.image);
+                const initial = escapeHtml((name.trim().charAt(0) || '?').toUpperCase());
+                const coverHtml = cover
+                    ? `<img src="${escapeHtml(cover)}" alt="" class="album-card-image" loading="lazy">`
+                    : `<span class="album-card-fallback" aria-hidden="true">${initial}</span>`;
                 return `
-                    <div class="album-item" onclick="viewAlbum('${album.id}')">
-                        <img src="${album.image || 'https://via.placeholder.com/180?text=No+Image'}" alt="${album.name}" class="album-image">
-                        <div class="album-name">${album.name}</div>
-                        <div class="album-info">${album.artists.join(', ')}</div>
-                    </div>
+                    <button type="button" class="album-card" onclick="viewAlbum('${escapeHtml(album.id)}')">
+                        <span class="album-card-cover">${coverHtml}</span>
+                        <span class="album-card-name">${safeName}</span>
+                        <span class="album-card-artist">${escapeHtml(artistLabel)}</span>
+                    </button>
                 `;
             }).join('');
         }
