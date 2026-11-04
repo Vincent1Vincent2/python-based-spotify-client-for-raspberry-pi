@@ -10,6 +10,7 @@ from player.feel import build_query, order_for_radio
 from player.features.song_radio.radio import (
     PLAYLIST_SIZE,
     READ_LIMIT,
+    SEARCH_LIMIT,
     SongRadioError,
     normalize_seed,
     song_radio_title,
@@ -169,7 +170,7 @@ class SongRadioTests(SimpleTestCase):
         self.assertEqual(reads[1][0], "search")
         self.assertEqual(reads[1][1], build_query([], normalize_seed(seed)[0]))
         self.assertEqual(reads[1][2], "track")
-        self.assertEqual(reads[1][3], READ_LIMIT)
+        self.assertEqual(reads[1][3], SEARCH_LIMIT)
         self.assertNotIn("saved_tracks", _kinds(api.calls))
         self.assertNotIn("recommendations", _kinds(api.calls))
         self.assertNotIn("get", _kinds(api.calls))
@@ -195,7 +196,7 @@ class SongRadioTests(SimpleTestCase):
         self.assertIsNone(api.calls[-1][3])
         self.assertEqual(result["reads"], [
             "GET /albums/alb9/tracks?limit=50",
-            "GET /search?limit=50",
+            "GET /search?limit=10",
         ])
         self.assertEqual(result["count"], 30)
         self.assertEqual(result["tracks"][0]["uri"], "spotify:track:seed")

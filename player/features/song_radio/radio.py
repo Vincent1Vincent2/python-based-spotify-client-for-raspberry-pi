@@ -5,7 +5,8 @@ From one track, at most two Spotify reads fill a private playlist:
 
 1. GET /albums/{album_id}/tracks?limit=50 when the seed includes an album
    id, otherwise GET /me/tracks?limit=50.
-2. One search. The query is build_query from player.feel for that seed.
+2. One search, limit 10. Development Mode rejects a higher search limit.
+   The query is build_query from player.feel for that seed.
 
 order_for_radio chains the pile from the seed. The writes are one
 POST /me/playlists (public false, name "{track name} Radio" at 80
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 PLAYLIST_SIZE = 30
 READ_LIMIT = 50
+SEARCH_LIMIT = 10
 NAME_LIMIT = 80
 _NAME_SUFFIX = " Radio"
 
@@ -176,9 +178,9 @@ def _search_once(api, seed):
     query = build_query([], seed)
     if not query:
         return [], "", None
-    response = api.search(q=query, type="track", limit=READ_LIMIT, offset=0)
+    response = api.search(q=query, type="track", limit=SEARCH_LIMIT, offset=0)
     tracks = tracks_from_search(_payload(response, "Search"))
-    return tracks, query, f"GET /search?limit={READ_LIMIT}"
+    return tracks, query, f"GET /search?limit={SEARCH_LIMIT}"
 
 
 def _public_track(track):
