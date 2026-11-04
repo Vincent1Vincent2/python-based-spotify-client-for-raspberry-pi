@@ -342,3 +342,41 @@ class FeelPageTests(TestCase):
         status = client.get("/feel/status/")
         self.assertEqual(status.status_code, 200)
         self.assertFalse(status.json()["active"])
+
+
+class NowPlayingStageTests(TestCase):
+    def test_index_template_includes_the_stage(self):
+        from django.template.loader import render_to_string
+
+        html = render_to_string(
+            "player/index.html",
+            {
+                "client_id": "test-client",
+                "access_token": "test-token",
+                "use_web_player": True,
+                "devices": [],
+                "accounts": [],
+                "active_account": None,
+                "selected_device_id": None,
+            },
+        )
+        self.assertIn('id="stageToggle"', html)
+        self.assertIn('id="nowPlayingStage"', html)
+        self.assertEqual(html.count("player/css/stage.css"), 1)
+        self.assertEqual(html.count("player/js/stage.js"), 1)
+
+    def test_stage_assets_read_the_player_dom(self):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        script = Path(settings.BASE_DIR, "player/static/player/js/stage.js").read_text()
+        css = Path(settings.BASE_DIR, "player/static/player/css/stage.css").read_text()
+        self.assertIn("trackInfo", script)
+        self.assertIn("playerStatus", script)
+        self.assertIn("Escape", script)
+        self.assertNotIn("current-playback", script)
+        self.assertIn("variables.css", css)
+        self.assertIn("var(--color-bg)", css)
+        self.assertIn("var(--color-text)", css)
+        self.assertIn("var(--border-width)", css)
