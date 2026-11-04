@@ -233,6 +233,7 @@
                     <button class="tab-button" onclick="switchTab('songs')" id="tab-songs">Songs</button>
                     <button class="tab-button" onclick="switchTab('discover')" id="tab-discover">Discover</button>
                     <button class="tab-button" onclick="switchTab('feel')" id="tab-feel">Feel</button>
+                    <button class="tab-button" onclick="switchTab('home')" id="tab-home">Home</button>
                 </div>
 
                 <div class="tab-content active" id="content-playlists">
@@ -326,6 +327,21 @@
                         </div>
                         <div id="feelStatus"></div>
                         <div id="feelTracks"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="content-home">
+                    <div class="home-section" id="homeSection">
+                        <div class="section-header">
+                            <h3>Home</h3>
+                        </div>
+                        <p class="home-note">The last 10 songs you played.</p>
+                        <div class="home-actions">
+                            <button class="btn" id="homeFeel" type="button" onclick="switchTab('feel')">Feel radio</button>
+                        </div>
+                        <div id="homeTracks">
+                            <div class="home-empty">Recently played songs load when you open Home.</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1570,7 +1586,74 @@
                 loadSongs(true);
             } else if (tabName === 'discover') {
                 loadDiscover(true);
+            } else if (tabName === 'home') {
+                loadHome();
             }
+        }
+
+        function loadHome() {
+            const list = document.getElementById('homeTracks');
+            if (!list) return;
+            list.innerHTML = '<div class="home-empty">Loading recently played songs...</div>';
+            fetch('/home/')
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    const data = result.data || {};
+                    if (!result.ok || data.error) {
+                        list.innerHTML = '<div class="home-error">' + homeErrorHtml(data) + '</div>';
+                        return;
+                    }
+                    renderHomeTracks(data.items || []);
+                })
+                .catch(function () {
+                    list.innerHTML = '<div class="home-error">Could not load recently played songs.</div>';
+                });
+        }
+
+        function homeErrorHtml(data) {
+            const message = escapeHtml((data && data.error) || 'Could not load recently played songs.');
+            if (data && data.code === 'needs_scope') {
+                return message + ' <a href="/login/?auth=1">Reconnect Spotify</a>';
+            }
+            return message;
+        }
+
+        function formatPlayedAt(value) {
+            if (!value) return '';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return value;
+            return date.toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+            });
+        }
+
+        function renderHomeTracks(items) {
+            const list = document.getElementById('homeTracks');
+            if (!list) return;
+            if (!items.length) {
+                list.innerHTML = '<div class="home-empty">No recently played songs.</div>';
+                return;
+            }
+            list.innerHTML = items.map(function (track) {
+                const artists = escapeHtml((track.artists || []).join(', '));
+                const album = track.album ? ' · ' + escapeHtml(track.album) : '';
+                const when = track.played_at
+                    ? '<div class="home-track-when">' + escapeHtml(formatPlayedAt(track.played_at)) + '</div>'
+                    : '';
+                const image = track.image
+                    ? '<img src="' + escapeHtml(track.image) + '" alt="" class="home-track-image">'
+                    : '';
+                return '<div class="home-track">' + image +
+                    '<div class="home-track-text"><div class="home-track-name">' + escapeHtml(track.name) + '</div>' +
+                    '<div class="home-track-artist">' + artists + album + '</div>' + when + '</div></div>';
+            }).join('');
         }
 
         let feelActive = false;
