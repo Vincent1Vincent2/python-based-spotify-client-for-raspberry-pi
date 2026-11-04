@@ -337,6 +337,7 @@
             <div class="playlist-detail-view" id="playlistDetailView">
                 <button class="back-button" id="detailBackButton" onclick="backFromDetail()">← Back to
                     Playlists</button>
+                {% include "player/_playlist_mark.html" %}
                 <div class="playlist-detail-header" id="playlistDetailHeader"></div>
                 <div class="playlist-detail-actions" id="playlistDetailActions"></div>
                 <div class="tracks-list" id="tracksList"></div>
@@ -1187,6 +1188,89 @@
             }).join('');
         }
 
+        function applyPlaylistMark(playlistId, mark) {
+            const root = document.getElementById('playlistMark');
+            if (!root) return;
+            root.hidden = false;
+            root.dataset.playlistId = playlistId;
+            const idLabel = document.getElementById('playlistMarkId');
+            if (idLabel) idLabel.textContent = playlistId;
+            const pin = document.getElementById('playlistPin');
+            const pinned = !!(mark && mark.pinned);
+            if (pin) {
+                pin.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+                pin.textContent = pinned ? 'Unpin' : 'Pin';
+            }
+            const tag = document.getElementById('playlistTag');
+            if (tag) tag.value = (mark && mark.tag) || '';
+        }
+
+        function hidePlaylistMark() {
+            const root = document.getElementById('playlistMark');
+            if (!root) return;
+            root.hidden = true;
+            root.dataset.playlistId = '';
+            const idLabel = document.getElementById('playlistMarkId');
+            if (idLabel) idLabel.textContent = '';
+        }
+
+        function decoratePlaylistMark(playlistId) {
+            applyPlaylistMark(playlistId, null);
+            fetch('/playlist-pins/marks/')
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    const root = document.getElementById('playlistMark');
+                    if (!root || root.dataset.playlistId !== playlistId) return;
+                    const marks = (data && data.marks) || [];
+                    const mark = marks.find(function (item) {
+                        return item.playlist_id === playlistId;
+                    });
+                    applyPlaylistMark(playlistId, mark || { pinned: false, tag: '' });
+                })
+                .catch(function () {});
+        }
+
+        function togglePlaylistPin() {
+            const root = document.getElementById('playlistMark');
+            const pin = document.getElementById('playlistPin');
+            if (!root || !pin || !root.dataset.playlistId) return;
+            const pinned = pin.getAttribute('aria-pressed') !== 'true';
+            fetch('/playlist-pins/pin/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    playlist_id: root.dataset.playlistId,
+                    pinned: pinned,
+                }),
+            })
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    if (!data || data.error) return;
+                    if (root.dataset.playlistId !== data.playlist_id) return;
+                    applyPlaylistMark(data.playlist_id, data);
+                });
+        }
+
+        function savePlaylistTag() {
+            const root = document.getElementById('playlistMark');
+            const tag = document.getElementById('playlistTag');
+            if (!root || !tag || !root.dataset.playlistId) return;
+            fetch('/playlist-pins/tag/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    playlist_id: root.dataset.playlistId,
+                    tag: tag.value,
+                }),
+            })
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    if (!data || data.error) return;
+                    if (root.dataset.playlistId !== data.playlist_id) return;
+                    applyPlaylistMark(data.playlist_id, data);
+                });
+        }
+
         function viewPlaylist(playlistId) {
             // Hide playlists section, show detail view
             const playlistsSection = document.getElementById('playlistsSection');
@@ -1212,6 +1296,7 @@
                 if (backBtn) backBtn.textContent = '← Back to Playlists';
             }
             playlistDetailView.style.display = 'block';
+            decoratePlaylistMark(playlistId);
 
             // Load playlist details
             fetch(`/playlist-detail/?id=${playlistId}`)
@@ -1380,6 +1465,7 @@
                 if (backBtn) backBtn.textContent = '← Back to Albums';
             }
             playlistDetailView.style.display = 'block';
+            hidePlaylistMark();
 
             // Load album details
             fetch(`/album-detail/?id=${albumId}`)
