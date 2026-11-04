@@ -511,6 +511,11 @@ class SpotifyAPI:
             Response object
         """
         return self.get(f'albums/{album_id}')
+
+    def get_album_tracks(self, album_id, limit=50, offset=0):
+        """Album tracks. One GET /albums/{id}/tracks."""
+        params = {'limit': limit, 'offset': offset}
+        return self.get(f'albums/{album_id}/tracks', params=params)
     
     def get_playlist(self, playlist_id):
         """

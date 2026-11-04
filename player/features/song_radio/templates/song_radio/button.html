@@ -1,0 +1,134 @@
+<style>
+    .song-radio {
+        text-align: center;
+        margin: 0 0 18px;
+    }
+
+    .song-radio-status {
+        margin: 10px 0 0;
+        min-height: 1.2em;
+        font-size: 0.9rem;
+    }
+</style>
+<div class="song-radio" id="songRadio">
+    <button type="button" class="btn" id="songRadioButton">Song radio</button>
+    <p class="song-radio-status" id="songRadioStatus" aria-live="polite"></p>
+</div>
+<script>
+(function () {
+    var endpoint = "{% url 'song_radio' %}";
+    var lastSeed = null;
+
+    function albumIdFrom(track) {
+        if (!track) return "";
+        if (track.album_id) return String(track.album_id);
+        var album = track.album;
+        if (!album || typeof album !== "object") return "";
+        if (album.id) return String(album.id);
+        var uri = album.uri ? String(album.uri) : "";
+        if (uri.indexOf("spotify:album:") === 0) return uri.split(":")[2];
+        return "";
+    }
+
+    function seedFrom(track) {
+        if (!track) return null;
+        var uri = track.uri ? String(track.uri) : "";
+        if (uri.indexOf("spotify:track:") !== 0) return null;
+        if (track.type === "episode" || track.content_type === "podcast") return null;
+        var artists = [];
+        var rawArtists = track.artists || [];
+        for (var i = 0; i < rawArtists.length; i++) {
+            var artist = rawArtists[i];
+            if (typeof artist === "string" && artist) artists.push(artist);
+            else if (artist && artist.name) artists.push(artist.name);
+        }
+        var seed = {
+            name: track.name || "",
+            artists: artists,
+            uri: uri
+        };
+        var albumId = albumIdFrom(track);
+        if (albumId) seed.album_id = albumId;
+        if (typeof track.album === "string" && track.album) seed.album = track.album;
+        else if (track.album && track.album.name) seed.album = track.album.name;
+        return seed;
+    }
+
+    function remember(track) {
+        var seed = seedFrom(track);
+        if (seed) lastSeed = seed;
+    }
+
+    if (!window.__songRadioFetchWrapped && window.fetch) {
+        window.__songRadioFetchWrapped = true;
+        var originalFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+            var pending = originalFetch(input, init);
+            try {
+                var url = typeof input === "string" ? input : ((input && input.url) || "");
+                if (url.indexOf("current-playback") !== -1) {
+                    pending.then(function (response) {
+                        if (!response || !response.clone) return;
+                        response.clone().json().then(function (data) {
+                            if (data && data.track) remember(data.track);
+                        }).catch(function () {});
+                    }).catch(function () {});
+                }
+            } catch (err) {}
+            return pending;
+        };
+    }
+
+    function currentSeed() {
+        var sdk = (typeof currentTrack !== "undefined") ? seedFrom(currentTrack) : null;
+        var web = (typeof useWebPlayer !== "undefined") && useWebPlayer;
+        if (web && sdk) return sdk;
+        if (lastSeed) return lastSeed;
+        return sdk;
+    }
+
+    var button = document.getElementById("songRadioButton");
+    var status = document.getElementById("songRadioStatus");
+    if (!button) return;
+
+    button.addEventListener("click", function () {
+        var seed = currentSeed();
+        if (!seed || !seed.uri) {
+            if (status) status.textContent = "Play a song, then start song radio.";
+            return;
+        }
+        var body = {
+            name: seed.name,
+            artists: seed.artists,
+            uri: seed.uri
+        };
+        if (seed.album_id) body.album_id = seed.album_id;
+        if (seed.album) body.album = seed.album;
+        if (typeof useWebPlayer !== "undefined" && useWebPlayer && typeof deviceId !== "undefined" && deviceId) {
+            body.device_id = deviceId;
+        }
+        button.disabled = true;
+        if (status) status.textContent = "Building a 30-song radio…";
+        fetch(endpoint, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(body)
+        }).then(function (response) {
+            return response.json().then(function (data) {
+                return {ok: response.ok, data: data};
+            });
+        }).then(function (result) {
+            var data = result.data || {};
+            if (!result.ok || data.error) {
+                if (status) status.textContent = data.error || "Song radio did not start.";
+                return;
+            }
+            if (status) status.textContent = data.message || ("Playing " + (data.name || "song radio") + ".");
+        }).catch(function () {
+            if (status) status.textContent = "Song radio did not start.";
+        }).then(function () {
+            button.disabled = false;
+        });
+    });
+})();
+</script>
