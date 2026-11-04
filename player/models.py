@@ -90,3 +90,30 @@ class FeelRadio(models.Model):
         if not tracks:
             return ""
         return tracks[-1].get("uri") or ""
+
+
+class PlaylistMark(models.Model):
+    """
+    Local pin and tag for one playlist on one linked account.
+
+    These live on the device only. Pinning or tagging does not call
+    Spotify and does not change the playlist in the listener's library.
+    """
+    account = models.ForeignKey(
+        SpotifyAccount,
+        on_delete=models.CASCADE,
+        related_name="playlist_marks",
+    )
+    playlist_id = models.CharField(max_length=64)
+    pinned = models.BooleanField(default=False)
+    tag = models.CharField(max_length=40, blank=True)
+
+    class Meta:
+        ordering = ["playlist_id"]
+        unique_together = [("account", "playlist_id")]
+
+    def __str__(self):
+        label = self.tag or self.playlist_id
+        if self.pinned:
+            return f"Pinned {label}"
+        return label
