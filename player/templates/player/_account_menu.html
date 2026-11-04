@@ -1,0 +1,37 @@
+{% load static %}
+<details class="account-menu" id="accountMenu">
+    <summary class="account-menu-toggle">
+        <span class="account-menu-avatar" aria-hidden="true">
+            {% if account_menu.avatar_url %}
+            <img src="{{ account_menu.avatar_url }}" alt="" data-initial="{{ account_menu.initial }}" onerror="this.onerror=null;this.replaceWith(document.createTextNode(this.dataset.initial||''))">
+            {% else %}
+            {{ account_menu.initial }}
+            {% endif %}
+        </span>
+        <span class="account-menu-label">{{ account_menu.label }}</span>
+        {% if account_menu.active %}<span class="account-menu-sr"> active</span>{% endif %}
+        <span class="account-menu-caret" aria-hidden="true">▾</span>
+    </summary>
+    <div class="account-menu-panel" id="accountMenuPanel" role="menu">
+        <div class="account-menu-list">
+            {% for row in account_menu.rows %}
+            <button type="button" class="account-menu-item{% if row.active %} is-active{% endif %}" role="menuitem" data-account-id="{{ row.id }}"{% if row.active %} aria-current="true"{% endif %}>
+                <span class="account-menu-item-avatar" aria-hidden="true">
+                    {% if row.avatar_url %}
+                    <img src="{{ row.avatar_url }}" alt="" data-initial="{{ row.initial }}" onerror="this.onerror=null;this.replaceWith(document.createTextNode(this.dataset.initial||''))">
+                    {% else %}
+                    {{ row.initial }}
+                    {% endif %}
+                </span>
+                <span class="account-menu-name">{{ row.label }}</span>
+                {% if row.active %}<span class="account-menu-badge">Active</span>{% endif %}
+            </button>
+            {% empty %}
+            <p class="account-menu-empty">No linked accounts</p>
+            {% endfor %}
+        </div>
+        <a class="account-menu-add" href="{% url 'login' %}?auth=1">Add account</a>
+        <p class="account-menu-status" id="accountMenuStatus" hidden></p>
+    </div>
+</details>
+<script src="{% static 'player/js/account-menu.js' %}"></script>

@@ -36,6 +36,201 @@ body {
     gap: 10px;
 }
 
+.header:has(.account-menu) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 16px;
+    text-align: left;
+    flex-wrap: wrap;
+}
+
+.header:has(.account-menu) h1 {
+    margin-bottom: 0;
+}
+
+.header:has(.account-menu) .header-buttons {
+    position: static;
+    align-items: center;
+    margin-left: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.account-menu {
+    position: relative;
+    z-index: 30;
+}
+
+.account-menu-toggle {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--color-bg);
+    border: var(--border-width) solid var(--color-border);
+    color: var(--color-text);
+    padding: 8px 14px;
+    border-radius: var(--border-radius);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    max-width: 220px;
+}
+
+.account-menu-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.account-menu[open] > .account-menu-toggle,
+.account-menu-toggle:hover {
+    background: var(--color-text);
+    color: var(--color-bg);
+}
+
+.account-menu-avatar,
+.account-menu-item-avatar {
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: var(--border-width) solid currentColor;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.account-menu-avatar img,
+.account-menu-item-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.account-menu-label,
+.account-menu-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.account-menu-label {
+    max-width: 8.5rem;
+}
+
+.account-menu-caret {
+    font-size: 0.75rem;
+    line-height: 1;
+}
+
+.account-menu-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.account-menu-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 240px;
+    max-width: min(320px, 80vw);
+    background: var(--color-bg);
+    color: var(--color-text);
+    border: var(--border-width) solid var(--color-border);
+}
+
+.account-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    color: inherit;
+    border: none;
+    padding: 12px 14px;
+    font: inherit;
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+.account-menu-name {
+    flex: 1;
+    min-width: 0;
+}
+
+.account-menu-item.is-active,
+.account-menu-item:hover,
+.account-menu-add:hover {
+    background: var(--color-text);
+    color: var(--color-bg);
+}
+
+.account-menu-item:disabled {
+    opacity: 0.6;
+    cursor: progress;
+}
+
+.account-menu-badge {
+    margin-left: auto;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.account-menu-empty {
+    margin: 0;
+    padding: 12px 14px;
+    color: var(--color-gray);
+}
+
+.account-menu-add {
+    display: block;
+    padding: 12px 14px;
+    border-top: var(--border-width) solid var(--color-border);
+    color: var(--color-text);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.account-menu-status {
+    margin: 0;
+    padding: 8px 14px 12px;
+    font-size: 0.85rem;
+}
+
+.account-menu-toggle:focus-visible,
+.account-menu-item:focus-visible,
+.account-menu-add:focus-visible {
+    outline: 2px solid var(--color-text);
+    outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+    .header:has(.account-menu) h1 {
+        font-size: 1.8rem;
+    }
+
+    .header:has(.account-menu) .header-buttons {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .account-menu-panel {
+        left: 0;
+        right: auto;
+    }
+}
+
 .logout-btn, .settings-btn {
     background: var(--color-bg);
     border: var(--border-width) solid var(--color-border);

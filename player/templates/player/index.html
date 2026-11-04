@@ -155,6 +155,7 @@
         <div class="header">
             <h1>Spotify Client</h1>
             <div class="header-buttons">
+                {% include "player/_account_menu.html" %}
                 <a href="{% url 'settings' %}" class="settings-btn">Settings</a>
                 <a href="{% url 'logout' %}" class="logout-btn">Logout</a>
             </div>
