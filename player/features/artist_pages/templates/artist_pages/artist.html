@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if artist %}{{ artist.name }}{% else %}Artist{% endif %} - Spotify Client</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
+    <link rel="stylesheet" href="{% static 'artist_pages/artist.css' %}">
+</head>
+<body>
+    <div class="container">
+        <div class="header artist-header">
+            <h1>{% if artist %}{{ artist.name }}{% else %}Artist{% endif %}</h1>
+            <div class="header-buttons">
+                <a href="{% url 'index' %}" class="settings-btn">Player</a>
+                <a href="{% url 'logout' %}" class="logout-btn">Logout</a>
+            </div>
+        </div>
+
+        <div class="player-card artist-page">
+            {% if artist %}
+            <div class="artist-hero">
+                {% if artist.image %}
+                <img src="{{ artist.image }}" alt="" class="artist-photo" width="180" height="180">
+                {% else %}
+                <div class="artist-photo artist-photo-empty" aria-hidden="true"></div>
+                {% endif %}
+                <div class="artist-identity">
+                    <p class="artist-kicker">Artist</p>
+                    <a class="artist-detail-link" href="{% url 'artist_pages:artist_detail' artist.id %}">Artist detail</a>
+                    {% if artist.genres %}
+                    <p class="artist-genres">{{ artist.genres|join:", " }}</p>
+                    {% endif %}
+                    {% if needs_scope %}
+                    <p class="artist-scope" data-code="needs_scope">
+                        {{ error|default:"Reconnect Spotify to follow artists." }}
+                        <a href="{{ login_url }}">Reconnect Spotify</a>
+                    </p>
+                    {% elif following is not None %}
+                    <button type="button" class="btn" id="artistFollow" data-following="{% if following %}true{% else %}false{% endif %}" data-url="{% url 'artist_pages:artist_follow' %}?id={{ artist.id }}" aria-pressed="{% if following %}true{% else %}false{% endif %}">{% if following %}Following{% else %}Follow{% endif %}</button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="artist-tabs" role="tablist" aria-label="Artist sections">
+                <button type="button" class="artist-tab active" role="tab" id="artist-tab-tracks" data-tab="tracks" aria-selected="true" aria-controls="artist-panel-tracks">Songs</button>
+                <button type="button" class="artist-tab" role="tab" id="artist-tab-albums" data-tab="albums" aria-selected="false" aria-controls="artist-panel-albums">Albums</button>
+            </div>
+
+            <div class="artist-panel" id="artist-panel-tracks" data-tab="tracks" role="tabpanel" aria-labelledby="artist-tab-tracks">
+                <p class="artist-note">
+                    {% if track_total and track_total > tracks|length %}
+                    Showing {{ tracks|length }} of {{ track_total }} songs. Search returns {{ tracks|length }} at a time.
+                    {% else %}
+                    {{ tracks|length }} song{{ tracks|length|pluralize }}
+                    {% endif %}
+                </p>
+                {% if tracks %}
+                <ul class="artist-tracks">
+                    {% for track in tracks %}
+                    <li class="artist-track">
+                        {% if track.image %}
+                        <img src="{{ track.image }}" alt="" class="artist-track-image" width="48" height="48">
+                        {% endif %}
+                        <div class="artist-track-copy">
+                            <div class="artist-track-name">{{ track.name }}</div>
+                            <div class="artist-track-meta">
+                                {% if track.artists %}{{ track.artists|join:", " }}{% endif %}
+                                {% if track.album %} · {{ track.album }}{% endif %}
+                                · {{ track.duration }}
+                            </div>
+                        </div>
+                        <button type="button" class="btn artist-play" data-play-track="{{ track.id }}">Play</button>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="artist-empty">No songs came back for this artist.</p>
+                {% endif %}
+            </div>
+
+            <div class="artist-panel" id="artist-panel-albums" data-tab="albums" role="tabpanel" aria-labelledby="artist-tab-albums" hidden>
+                <p class="artist-note">
+                    {% if album_total and album_total > albums|length %}
+                    Showing {{ albums|length }} of {{ album_total }} albums. Spotify returns 10 at a time.
+                    {% else %}
+                    {{ albums|length }} album{{ albums|length|pluralize }}
+                    {% endif %}
+                </p>
+                {% if albums %}
+                <div class="artist-albums">
+                    {% for album in albums %}
+                    <article class="artist-album">
+                        {% if album.image %}
+                        <img src="{{ album.image }}" alt="" class="artist-album-image" width="160" height="160">
+                        {% else %}
+                        <div class="artist-album-image artist-photo-empty" aria-hidden="true"></div>
+                        {% endif %}
+                        <h2 class="artist-album-name">{{ album.name }}</h2>
+                        <p class="artist-album-meta">{{ album.type_label }}{% if album.year %} · {{ album.year }}{% endif %}{% if album.total_tracks %} · {{ album.total_tracks }} tracks{% endif %}</p>
+                        <button type="button" class="btn artist-play" data-play-album="{{ album.id }}">Play</button>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="artist-empty">No albums came back for this artist.</p>
+                {% endif %}
+            </div>
+            <p id="artistStatus" class="artist-status" role="status"></p>
+            {% elif needs_scope or error %}
+            <section class="artist-message" data-code="{{ code }}">
+                <p>{{ error }}</p>
+                {% if needs_scope %}
+                <a href="{{ login_url }}">Reconnect Spotify</a>
+                {% endif %}
+            </section>
+            {% else %}
+            <form class="artist-open" method="get" action="{% url 'artist_pages:artist_page' %}">
+                <label for="artistId">Artist id</label>
+                <div class="artist-open-row">
+                    <input id="artistId" name="id" type="text" inputmode="text" autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9]{1,64}" maxlength="64" placeholder="Spotify artist id" required>
+                    <button type="submit" class="btn">Open artist</button>
+                </div>
+                <p class="artist-note">A search result opens this page with the artist id.</p>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% if artist %}
+    <script>
+        (function () {
+            var tabs = document.querySelectorAll('.artist-tab');
+            tabs.forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    var name = tab.getAttribute('data-tab');
+                    tabs.forEach(function (other) {
+                        var on = other === tab;
+                        other.classList.toggle('active', on);
+                        other.setAttribute('aria-selected', on ? 'true' : 'false');
+                    });
+                    document.querySelectorAll('.artist-panel').forEach(function (panel) {
+                        panel.hidden = panel.getAttribute('data-tab') !== name;
+                    });
+                });
+            });
+
+            var button = document.getElementById('artistFollow');
+            var status = document.getElementById('artistStatus');
+
+            function showStatus(message) {
+                if (status) {
+                    status.textContent = message || '';
+                }
+            }
+
+            if (button) {
+                button.addEventListener('click', function () {
+                    var following = button.getAttribute('data-following') === 'true';
+                    button.disabled = true;
+                    fetch(button.getAttribute('data-url'), {
+                        method: following ? 'DELETE' : 'PUT'
+                    }).then(function (response) {
+                        return response.json().then(function (data) {
+                            return { ok: response.ok, data: data };
+                        });
+                    }).then(function (result) {
+                        var data = result.data || {};
+                        if (data.code === 'needs_scope' && data.login_url) {
+                            var link = document.createElement('a');
+                            link.href = data.login_url;
+                            link.textContent = 'Reconnect Spotify';
+                            button.replaceWith(link);
+                            showStatus(data.error || '');
+                            return;
+                        }
+                        if (!result.ok) {
+                            showStatus(data.error || 'Could not update follow.');
+                            button.disabled = false;
+                            return;
+                        }
+                        var now = !!data.following;
+                        button.setAttribute('data-following', now ? 'true' : 'false');
+                        button.setAttribute('aria-pressed', now ? 'true' : 'false');
+                        button.textContent = now ? 'Following' : 'Follow';
+                        button.disabled = false;
+                        showStatus(now ? 'Following' : 'Unfollowed');
+                    }).catch(function () {
+                        showStatus('Could not update follow.');
+                        button.disabled = false;
+                    });
+                });
+            }
+
+            document.body.addEventListener('click', function (event) {
+                var play = event.target.closest('[data-play-track], [data-play-album]');
+                if (!play) {
+                    return;
+                }
+                var trackId = play.getAttribute('data-play-track');
+                var albumId = play.getAttribute('data-play-album');
+                var url = trackId
+                    ? '/play-track/?id=' + encodeURIComponent(trackId)
+                    : '/play-album/?id=' + encodeURIComponent(albumId);
+                fetch(url, { method: 'POST' })
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        showStatus(data.error || (data.status === 'playing' ? 'Playing' : ''));
+                    })
+                    .catch(function () {
+                        showStatus('Could not start playback.');
+                    });
+            });
+        })();
+    </script>
+    {% endif %}
+</body>
+</html>
