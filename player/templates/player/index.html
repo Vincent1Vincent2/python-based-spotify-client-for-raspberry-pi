@@ -233,6 +233,7 @@
                     <button class="tab-button" onclick="switchTab('songs')" id="tab-songs">Songs</button>
                     <button class="tab-button" onclick="switchTab('discover')" id="tab-discover">Discover</button>
                     <button class="tab-button" onclick="switchTab('feel')" id="tab-feel">Feel</button>
+                    <button class="tab-button" onclick="switchTab('following')" id="tab-following">Following</button>
                 </div>
 
                 <div class="tab-content active" id="content-playlists">
@@ -326,6 +327,17 @@
                         </div>
                         <div id="feelStatus"></div>
                         <div id="feelTracks"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="content-following">
+                    <div class="following-section" id="followingSection">
+                        <div class="section-header">
+                            <h3>Following</h3>
+                        </div>
+                        <div class="discover-grid" id="followingGrid">
+                            <div class="following-message">Loading artists you follow...</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1570,7 +1582,57 @@
                 loadSongs(true);
             } else if (tabName === 'discover') {
                 loadDiscover(true);
+            } else if (tabName === 'following') {
+                loadFollowing();
             }
+        }
+
+        function loadFollowing() {
+            const grid = document.getElementById('followingGrid');
+            if (!grid) return;
+            grid.innerHTML = '<div class="following-message">Loading artists you follow...</div>';
+            fetch('/features/followed-artists/')
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    }).catch(function () {
+                        return { ok: false, data: {} };
+                    });
+                })
+                .then(function (result) {
+                    const data = result.data || {};
+                    if (data.code === 'needs_scope') {
+                        const login = data.login || '/login/?auth=1';
+                        grid.innerHTML = '<div class="following-message">Reconnect Spotify to show artists you follow. <a href="' + escapeAttr(login) + '">Reconnect Spotify</a></div>';
+                        return;
+                    }
+                    if (!result.ok || data.error) {
+                        grid.innerHTML = '<div class="following-message">' + escapeHtml(data.error || 'Could not load artists you follow.') + '</div>';
+                        return;
+                    }
+                    displayFollowing(data.artists || []);
+                })
+                .catch(function () {
+                    grid.innerHTML = '<div class="following-message">Could not load artists you follow.</div>';
+                });
+        }
+
+        function displayFollowing(artists) {
+            const grid = document.getElementById('followingGrid');
+            if (!artists.length) {
+                grid.innerHTML = '<div class="following-message">No followed artists.</div>';
+                return;
+            }
+            grid.innerHTML = artists.map(function (artist) {
+                const name = artist.name || 'Unknown artist';
+                const image = artist.image || 'https://via.placeholder.com/180?text=No+Image';
+                const href = '/features/artist-pages/?id=' + encodeURIComponent(artist.id || '');
+                return ''
+                    + '<a class="discover-item following-artist" href="' + escapeAttr(href) + '">'
+                    + '<img src="' + escapeAttr(image) + '" alt="' + escapeAttr(name) + '" class="discover-item-image following-artist-image">'
+                    + '<div class="discover-item-name">' + escapeHtml(name) + '</div>'
+                    + '</a>';
+            }).join('');
         }
 
         let feelActive = false;
