@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from player.features.search_browser.views import search_browser
 
 urlpatterns = [
     path('', views.index, name='index'),
@@ -11,6 +12,7 @@ urlpatterns = [
     path('accounts/switch/', views.switch_account_view, name='switch_account'),
     path('accounts/remove/', views.remove_account_view, name='remove_account'),
     path('search/', views.search, name='search'),
+    path('search-browser/', search_browser, name='search_browser'),
     path('devices/', views.devices, name='devices'),
     path('current-playback/', views.current_playback, name='current_playback'),
     path('transfer/', views.transfer_device, name='transfer'),

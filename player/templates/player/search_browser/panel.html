@@ -1,0 +1,284 @@
+<div class="tab-content" id="content-search-browser">
+    <div class="search-browser" id="searchBrowserPanel">
+        <div class="section-header">
+            <h3>Search+</h3>
+        </div>
+        <p class="sb-note">
+            One catalog type per search. Spotify returns at most 10 results.
+            Next page is another click, with an explicit offset. An optional
+            market is remembered for this session.
+        </p>
+        <div class="sb-bar">
+            <input type="text" class="search-input" id="searchBrowserQuery"
+                placeholder="Search tracks, albums, shows…" autocomplete="off">
+            <select class="search-input sb-type" id="searchBrowserType" aria-label="Result type">
+                <option value="track">Tracks</option>
+                <option value="album">Albums</option>
+                <option value="artist">Artists</option>
+                <option value="playlist">Playlists</option>
+                <option value="show">Shows</option>
+                <option value="episode">Episodes</option>
+            </select>
+            <input type="text" class="search-input sb-market" id="searchBrowserMarket"
+                maxlength="2" placeholder="Market" aria-label="Market"
+                autocapitalize="characters" spellcheck="false"
+                value="{{ request.session.search_browser_market|default:'' }}">
+            <button class="btn" type="button" id="searchBrowserSubmit">Search</button>
+            <button class="btn" type="button" id="searchBrowserSaveMarket">Save market</button>
+        </div>
+        <div class="sb-meta" id="searchBrowserMeta" aria-live="polite"></div>
+        <div class="search-results" id="searchBrowserResults"></div>
+        <div class="sb-actions">
+            <button class="btn" type="button" id="searchBrowserPrev" hidden>Previous page</button>
+            <button class="btn" type="button" id="searchBrowserNext" hidden>Next page</button>
+        </div>
+    </div>
+</div>
+<style>
+    .sb-note {
+        margin: 0 0 16px;
+        line-height: 1.45;
+    }
+
+    .sb-bar,
+    .sb-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .sb-bar .search-input {
+        flex: 1 1 180px;
+    }
+
+    .sb-bar .sb-type {
+        flex: 0 1 150px;
+    }
+
+    .sb-bar .sb-market {
+        flex: 0 0 96px;
+        text-transform: uppercase;
+    }
+
+    .sb-meta {
+        min-height: 1.2em;
+        margin-bottom: 12px;
+        color: var(--color-gray);
+    }
+
+    a.sb-hit,
+    button.sb-hit {
+        width: 100%;
+        text-align: left;
+        font: inherit;
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .search-results .sb-hit + .sb-hit {
+        margin-top: 10px;
+    }
+</style>
+<script>
+    (function () {
+        var panel = document.getElementById("searchBrowserPanel");
+        if (!panel || panel.dataset.bound === "1") {
+            return;
+        }
+        panel.dataset.bound = "1";
+
+        var queryInput = document.getElementById("searchBrowserQuery");
+        var typeInput = document.getElementById("searchBrowserType");
+        var marketInput = document.getElementById("searchBrowserMarket");
+        var meta = document.getElementById("searchBrowserMeta");
+        var results = document.getElementById("searchBrowserResults");
+        var prevButton = document.getElementById("searchBrowserPrev");
+        var nextButton = document.getElementById("searchBrowserNext");
+        var inFlight = false;
+        var page = { nextOffset: null, prevOffset: null };
+        var detailBase = {
+            album: "/album-detail/?id=",
+            playlist: "/playlist-detail/?id="
+        };
+
+        function escapeHtml(value) {
+            return String(value == null ? "" : value).replace(/[&<>"']/g, function (char) {
+                return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char];
+            });
+        }
+
+        function clock(ms) {
+            var total = Math.floor(Number(ms) / 1000);
+            if (!isFinite(total) || total < 0) {
+                return "";
+            }
+            var minutes = Math.floor(total / 60);
+            var seconds = total % 60;
+            return minutes + ":" + String(seconds).padStart(2, "0");
+        }
+
+        function setPaging(data) {
+            page.nextOffset = data && data.has_next ? data.next_offset : null;
+            page.prevOffset = data && data.offset ? data.prev_offset : null;
+            prevButton.hidden = page.prevOffset === null || page.prevOffset === undefined;
+            nextButton.hidden = page.nextOffset === null || page.nextOffset === undefined;
+        }
+
+        function render(data) {
+            var items = data.items || [];
+            if (!items.length) {
+                results.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No results found</div>';
+                return;
+            }
+            results.innerHTML = items.map(function (item) {
+                var duration = item.duration_ms ? clock(item.duration_ms) : "";
+                var subtitle = item.subtitle || "";
+                if (duration) {
+                    subtitle = subtitle ? subtitle + " • " + duration : duration;
+                }
+                var image = item.image || "https://via.placeholder.com/60?text=No+Image";
+                var body = ''
+                    + '<img src="' + escapeHtml(image) + '" alt="" class="result-image">'
+                    + '<div class="result-info">'
+                    + '<div class="result-name">' + escapeHtml(item.name) + '</div>'
+                    + '<div class="result-artist">' + escapeHtml(subtitle) + '</div>'
+                    + '</div>';
+                var detailUrl = item.detail_url;
+                if (!detailUrl && detailBase[item.type] && item.id) {
+                    detailUrl = detailBase[item.type] + encodeURIComponent(item.id);
+                }
+                if (detailUrl && (item.type === "album" || item.type === "playlist")) {
+                    return '<a class="search-result-item sb-hit" href="' + escapeHtml(detailUrl) + '"'
+                        + ' data-type="' + escapeHtml(item.type) + '" data-id="' + escapeHtml(item.id) + '">'
+                        + body + '</a>';
+                }
+                if (item.type === "track") {
+                    return '<button type="button" class="search-result-item sb-hit" data-type="track"'
+                        + ' data-id="' + escapeHtml(item.id) + '">' + body + '</button>';
+                }
+                return '<div class="search-result-item sb-hit" data-type="' + escapeHtml(item.type) + '">'
+                    + body + '</div>';
+            }).join("");
+        }
+
+        function openItem(event) {
+            var el = event.currentTarget;
+            var type = el.getAttribute("data-type");
+            var id = el.getAttribute("data-id");
+            if (!id) {
+                return;
+            }
+            if (type === "album" && typeof viewAlbum === "function") {
+                event.preventDefault();
+                viewAlbum(id);
+            } else if (type === "playlist" && typeof viewPlaylist === "function") {
+                event.preventDefault();
+                viewPlaylist(id);
+            } else if (type === "track" && typeof playTrack === "function") {
+                playTrack(id);
+            }
+        }
+
+        results.addEventListener("click", function (event) {
+            var hit = event.target.closest(".sb-hit");
+            if (!hit || !results.contains(hit)) {
+                return;
+            }
+            openItem({ currentTarget: hit, preventDefault: function () { event.preventDefault(); } });
+        });
+
+        function run(offset) {
+            if (inFlight) {
+                return;
+            }
+            var q = queryInput.value.trim();
+            if (!q) {
+                meta.textContent = "Enter a search.";
+                return;
+            }
+            inFlight = true;
+            meta.textContent = "Searching…";
+            var params = new URLSearchParams();
+            params.set("q", q);
+            params.set("type", typeInput.value);
+            params.set("limit", "10");
+            params.set("offset", String(offset));
+            params.set("market", marketInput.value.trim());
+            fetch("/search-browser/?" + params.toString())
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    if (data.error) {
+                        results.innerHTML = "";
+                        setPaging(null);
+                        meta.textContent = data.error;
+                        return;
+                    }
+                    if (data.market) {
+                        marketInput.value = data.market;
+                    }
+                    var where = "Offset " + data.offset + " · " + data.items.length + " shown";
+                    if (data.total) {
+                        where += " · " + data.total + " total";
+                    }
+                    if (data.reads && data.reads.length) {
+                        where += " · " + data.reads.join(", ");
+                    }
+                    meta.textContent = where;
+                    render(data);
+                    setPaging(data);
+                })
+                .catch(function () {
+                    meta.textContent = "Search failed.";
+                })
+                .then(function () {
+                    inFlight = false;
+                });
+        }
+
+        document.getElementById("searchBrowserSubmit").addEventListener("click", function () {
+            run(0);
+        });
+        queryInput.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+                run(0);
+            }
+        });
+        nextButton.addEventListener("click", function () {
+            if (page.nextOffset === null || page.nextOffset === undefined) {
+                return;
+            }
+            run(page.nextOffset);
+        });
+        prevButton.addEventListener("click", function () {
+            if (page.prevOffset === null || page.prevOffset === undefined) {
+                return;
+            }
+            run(page.prevOffset);
+        });
+        document.getElementById("searchBrowserSaveMarket").addEventListener("click", function () {
+            if (inFlight) {
+                return;
+            }
+            var params = new URLSearchParams();
+            params.set("market", marketInput.value.trim());
+            fetch("/search-browser/?" + params.toString())
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    if (data.error) {
+                        meta.textContent = data.error;
+                        return;
+                    }
+                    meta.textContent = data.market ? "Market saved: " + data.market : "Market cleared.";
+                    if (data.market) {
+                        marketInput.value = data.market;
+                    } else {
+                        marketInput.value = "";
+                    }
+                })
+                .catch(function () {
+                    meta.textContent = "Could not save the market.";
+                });
+        });
+    })();
+</script>
