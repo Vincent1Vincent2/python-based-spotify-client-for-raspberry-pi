@@ -1,0 +1,514 @@
+{% load static %}
+<link rel="stylesheet" href="{% static 'playlist_editor/editor.css' %}">
+<div class="tab-content" id="content-playlist-editor">
+    <div class="playlist-editor" id="playlistEditor">
+        <div id="playlistEditorLibrary">
+            <div class="section-header">
+                <h3>Playlists editor</h3>
+            </div>
+            <p class="playlist-editor-note">
+                Private playlists only. Create one, change its name or description,
+                or remove it from your library. Open a playlist to add a track URI,
+                take a song out, or move it up or down. Songs load 50 at a time.
+            </p>
+            <form id="playlistEditorCreate" class="playlist-editor-form">
+                <label class="playlist-editor-label" for="playlistEditorName">Name</label>
+                <input class="search-input" id="playlistEditorName" maxlength="100" autocomplete="off" required>
+                <label class="playlist-editor-label" for="playlistEditorDescription">Description</label>
+                <input class="search-input" id="playlistEditorDescription" maxlength="300" autocomplete="off">
+                <div class="playlist-editor-actions">
+                    <button class="btn" type="submit">Create private playlist</button>
+                </div>
+            </form>
+            <div id="playlistEditorMessage" class="playlist-editor-message" role="status"></div>
+            <div class="playlist-editor-actions">
+                <button class="btn" type="button" id="playlistEditorRefresh">Refresh</button>
+            </div>
+            <div id="playlistEditorList" class="playlist-editor-list"></div>
+            <div class="playlist-editor-actions">
+                <button class="btn" type="button" id="playlistEditorMore" hidden>Load more</button>
+            </div>
+        </div>
+
+        <div id="playlistEditorDetail" class="playlist-editor-detail">
+            <div class="playlist-editor-actions">
+                <button class="btn" type="button" id="playlistEditorBack">Back to playlists</button>
+            </div>
+            <h3 id="playlistEditorDetailTitle"></h3>
+            <p id="playlistEditorDetailMeta" class="playlist-editor-meta"></p>
+            <form id="playlistEditorSave" class="playlist-editor-form">
+                <label class="playlist-editor-label" for="playlistEditorDetailName">Name</label>
+                <input class="search-input" id="playlistEditorDetailName" maxlength="100" autocomplete="off" required>
+                <label class="playlist-editor-label" for="playlistEditorDetailDescription">Description</label>
+                <input class="search-input" id="playlistEditorDetailDescription" maxlength="300" autocomplete="off">
+                <div class="playlist-editor-actions">
+                    <button class="btn" type="submit">Save name and description</button>
+                    <button class="btn" type="button" id="playlistEditorDelete">Remove from library</button>
+                </div>
+            </form>
+            <form id="playlistEditorAdd" class="playlist-editor-form">
+                <label class="playlist-editor-label" for="playlistEditorUri">Track URI</label>
+                <input class="search-input" id="playlistEditorUri" placeholder="spotify:track:…" autocomplete="off">
+                <div class="playlist-editor-actions">
+                    <button class="btn" type="submit">Add track</button>
+                </div>
+            </form>
+            <div id="playlistEditorTracks"></div>
+            <div class="playlist-editor-actions">
+                <button class="btn" type="button" id="playlistEditorTracksMore" hidden>Load more tracks</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var ROOT = "/playlist-editor/";
+    var state = {
+        offset: 0,
+        hasMore: false,
+        playlists: [],
+        detailId: "",
+        detailOffset: 0,
+        detailHasMore: false,
+        busy: false
+    };
+
+    function setMessage(text, isError) {
+        var el = document.getElementById("playlistEditorMessage");
+        if (!el) return;
+        el.textContent = text || "";
+        el.classList.toggle("is-error", !!isError);
+    }
+
+    function request(url, body) {
+        var options = { headers: { "Content-Type": "application/json" } };
+        if (body) {
+            options.method = "POST";
+            options.body = JSON.stringify(body);
+        }
+        return fetch(url, options).then(function (response) {
+            return response.json().then(function (data) {
+                return { ok: response.ok, data: data };
+            }).catch(function () {
+                return { ok: response.ok, data: {} };
+            });
+        });
+    }
+
+    function showLibrary() {
+        state.detailId = "";
+        document.getElementById("playlistEditorLibrary").classList.remove("is-hidden");
+        document.getElementById("playlistEditorDetail").classList.remove("is-open");
+    }
+
+    function showDetail() {
+        document.getElementById("playlistEditorLibrary").classList.add("is-hidden");
+        document.getElementById("playlistEditorDetail").classList.add("is-open");
+    }
+
+    function renderPlaylists() {
+        var list = document.getElementById("playlistEditorList");
+        var more = document.getElementById("playlistEditorMore");
+        list.textContent = "";
+        if (!state.playlists.length) {
+            list.textContent = "No playlists yet.";
+        }
+        state.playlists.forEach(function (playlist) {
+            var button = document.createElement("button");
+            button.type = "button";
+            button.className = "playlist-editor-choice";
+            var name = document.createElement("div");
+            name.className = "playlist-editor-choice-name";
+            name.textContent = playlist.name || "Untitled";
+            var meta = document.createElement("div");
+            meta.className = "playlist-editor-meta";
+            var kind = playlist.private ? "Private" : "Public";
+            meta.textContent = kind + " · " + (playlist.tracks_count || 0) + " tracks";
+            if (playlist.owner) meta.textContent += " · " + playlist.owner;
+            button.appendChild(name);
+            button.appendChild(meta);
+            button.addEventListener("click", function () {
+                openDetail(playlist.id, 0);
+            });
+            list.appendChild(button);
+        });
+        more.hidden = !state.hasMore;
+    }
+
+    function loadPlaylists(reset, quiet) {
+        if (state.busy) return;
+        if (reset) {
+            state.offset = 0;
+            state.playlists = [];
+        }
+        state.busy = true;
+        if (!quiet) setMessage("Loading playlists…");
+        request(ROOT + "playlists/?offset=" + state.offset).then(function (result) {
+            state.busy = false;
+            if (!result.ok) {
+                setMessage(result.data.error || "Could not load playlists.", true);
+                return;
+            }
+            if (!quiet) setMessage("");
+            state.playlists = state.playlists.concat(result.data.playlists || []);
+            state.hasMore = !!result.data.has_more;
+            state.offset += (result.data.playlists || []).length;
+            renderPlaylists();
+        }).catch(function () {
+            state.busy = false;
+            setMessage("Could not load playlists.", true);
+        });
+    }
+
+    function formatDuration(ms) {
+        var total = Math.floor((ms || 0) / 1000);
+        var minutes = Math.floor(total / 60);
+        var seconds = total % 60;
+        return minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    }
+
+    function rowButton(label, disabled, onClick) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn playlist-editor-mini";
+        button.textContent = label;
+        button.disabled = !!disabled;
+        button.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            onClick();
+        });
+        return button;
+    }
+
+    function renderDetail(data) {
+        state.detailId = data.id;
+        state.detailOffset = data.offset || 0;
+        state.detailHasMore = !!data.has_more;
+        showDetail();
+        document.getElementById("playlistEditorDetailTitle").textContent = data.name || "Untitled";
+        var meta = document.getElementById("playlistEditorDetailMeta");
+        var kind = data.private ? "Private" : "Not private";
+        meta.textContent = kind + " · " + (data.tracks_count || 0) + " tracks";
+        if (data.owner) meta.textContent += " · " + data.owner;
+        document.getElementById("playlistEditorDetailName").value = data.name || "";
+        document.getElementById("playlistEditorDetailDescription").value = data.description || "";
+        document.getElementById("playlistEditorDelete").hidden = !data.private;
+        var tracks = document.getElementById("playlistEditorTracks");
+        tracks.textContent = "";
+        if (!data.tracks || !data.tracks.length) {
+            tracks.textContent = "No tracks in this playlist.";
+        }
+        (data.tracks || []).forEach(function (track) {
+            var row = document.createElement("div");
+            row.className = "playlist-editor-track";
+            var main = document.createElement("div");
+            main.className = "playlist-editor-track-main";
+            var title = document.createElement("div");
+            title.className = "playlist-editor-track-name";
+            title.textContent = track.name || "Unavailable";
+            var by = document.createElement("div");
+            by.className = "playlist-editor-meta";
+            var artists = (track.artists || []).join(", ");
+            by.textContent = artists || track.album || "";
+            if (track.duration_ms) {
+                by.textContent = (by.textContent ? by.textContent + " · " : "") + formatDuration(track.duration_ms);
+            }
+            main.appendChild(title);
+            main.appendChild(by);
+            row.appendChild(main);
+            var actions = document.createElement("div");
+            actions.className = "playlist-editor-row-actions";
+            actions.appendChild(rowButton("Up", track.position === 0, function () {
+                moveTrack(track, "up");
+            }));
+            actions.appendChild(rowButton("Down", track.position >= (data.tracks_count || 0) - 1, function () {
+                moveTrack(track, "down");
+            }));
+            actions.appendChild(rowButton("Remove", !track.available, function () {
+                removeTrack(track);
+            }));
+            row.appendChild(actions);
+            tracks.appendChild(row);
+        });
+        document.getElementById("playlistEditorTracksMore").hidden = !state.detailHasMore;
+    }
+
+    function openDetail(id, offset) {
+        if (state.busy) return;
+        state.busy = true;
+        request(ROOT + encodeURIComponent(id) + "/?offset=" + offset).then(function (result) {
+            state.busy = false;
+            if (!result.ok) {
+                setMessage(result.data.error || "Could not open that playlist.", true);
+                return;
+            }
+            setMessage("");
+            renderDetail(result.data);
+        }).catch(function () {
+            state.busy = false;
+            setMessage("Could not open that playlist.", true);
+        });
+    }
+
+    function moveTrack(track, direction) {
+        if (!state.detailId || state.busy) return;
+        state.busy = true;
+        request(ROOT + encodeURIComponent(state.detailId) + "/items/move/", {
+            index: track.position,
+            direction: direction,
+            uri: track.uri || ""
+        }).then(function (result) {
+            state.busy = false;
+            if (!result.ok) {
+                setMessage(result.data.error || "Could not move that track.", true);
+                return;
+            }
+            openDetail(state.detailId, state.detailOffset);
+        }).catch(function () {
+            state.busy = false;
+            setMessage("Could not move that track.", true);
+        });
+    }
+
+    function removeTrack(track) {
+        if (!state.detailId || state.busy) return;
+        state.busy = true;
+        request(ROOT + encodeURIComponent(state.detailId) + "/items/remove/", {
+            uri: track.uri,
+            index: track.position
+        }).then(function (result) {
+            state.busy = false;
+            if (!result.ok) {
+                setMessage(result.data.error || "Could not remove that track.", true);
+                return;
+            }
+            setMessage("Removed from the playlist.");
+            openDetail(state.detailId, state.detailOffset);
+        }).catch(function () {
+            state.busy = false;
+            setMessage("Could not remove that track.", true);
+        });
+    }
+
+    function statusLine(text) {
+        var indicator = document.getElementById("statusIndicator");
+        if (indicator) indicator.textContent = text || "";
+    }
+
+    function postPlaylistEdit(playlistId, path, body, done) {
+        request(ROOT + encodeURIComponent(playlistId) + path, body).then(function (result) {
+            if (!result.ok) {
+                statusLine(result.data.error || "Playlist edit failed.");
+                return;
+            }
+            if (done) done(result.data);
+        }).catch(function () {
+            statusLine("Playlist edit failed.");
+        });
+    }
+
+    function buildLegacyAddForm(playlistId) {
+        var form = document.createElement("form");
+        form.className = "playlist-editor-detail-add";
+        form.setAttribute("data-playlist-editor-add", playlistId);
+        var input = document.createElement("input");
+        input.className = "search-input";
+        input.placeholder = "spotify:track:…";
+        input.setAttribute("aria-label", "Track URI");
+        var button = document.createElement("button");
+        button.type = "submit";
+        button.className = "btn";
+        button.textContent = "Add track";
+        form.appendChild(input);
+        form.appendChild(button);
+        form.addEventListener("submit", function (event) {
+            event.preventDefault();
+            var uri = input.value.trim();
+            if (!uri) return;
+            postPlaylistEdit(playlistId, "/items/add/", { uri: uri }, function () {
+                input.value = "";
+                statusLine("Added to the playlist.");
+                if (window.viewPlaylist) window.viewPlaylist(playlistId);
+            });
+        });
+        return form;
+    }
+
+    function enhanceOpenPlaylist() {
+        var list = document.getElementById("tracksList");
+        var actions = document.getElementById("playlistDetailActions");
+        if (!list) return;
+        var rows = list.querySelectorAll(".track-row-swipe[data-playlist-id]");
+        if (!rows.length) {
+            if (actions) {
+                var stale = actions.querySelector("[data-playlist-editor-add]");
+                if (stale) stale.remove();
+            }
+            return;
+        }
+        var playlistId = rows[0].getAttribute("data-playlist-id");
+        if (actions && !actions.querySelector("[data-playlist-editor-add]")) {
+            actions.appendChild(buildLegacyAddForm(playlistId));
+        }
+        rows.forEach(function (row, index) {
+            if (row.querySelector("[data-playlist-editor-row]")) return;
+            var trackId = row.getAttribute("data-track-id");
+            if (!trackId) return;
+            var bar = document.createElement("div");
+            bar.className = "playlist-editor-row-actions";
+            bar.setAttribute("data-playlist-editor-row", "1");
+            var uri = "spotify:track:" + trackId;
+            bar.appendChild(rowButton("Up", index === 0, function () {
+                postPlaylistEdit(playlistId, "/items/move/", {
+                    index: index,
+                    direction: "up",
+                    uri: uri
+                }, function () {
+                    if (window.viewPlaylist) window.viewPlaylist(playlistId);
+                });
+            }));
+            bar.appendChild(rowButton("Down", index === rows.length - 1, function () {
+                postPlaylistEdit(playlistId, "/items/move/", {
+                    index: index,
+                    direction: "down",
+                    uri: uri
+                }, function () {
+                    if (window.viewPlaylist) window.viewPlaylist(playlistId);
+                });
+            }));
+            bar.appendChild(rowButton("Remove", false, function () {
+                postPlaylistEdit(playlistId, "/items/remove/", {
+                    index: index,
+                    uri: uri
+                }, function () {
+                    statusLine("Removed from the playlist.");
+                    if (window.viewPlaylist) window.viewPlaylist(playlistId);
+                });
+            }));
+            var slot = row.querySelector(".track-actions-col") || row;
+            slot.appendChild(bar);
+        });
+    }
+
+    function bindEditor() {
+        var root = document.getElementById("playlistEditor");
+        if (!root || root.getAttribute("data-bound") === "1") return;
+        root.setAttribute("data-bound", "1");
+        document.getElementById("playlistEditorCreate").addEventListener("submit", function (event) {
+            event.preventDefault();
+            if (state.busy) return;
+            state.busy = true;
+            request(ROOT + "create/", {
+                name: document.getElementById("playlistEditorName").value,
+                description: document.getElementById("playlistEditorDescription").value
+            }).then(function (result) {
+                state.busy = false;
+                if (!result.ok) {
+                    setMessage(result.data.error || "Could not create the playlist.", true);
+                    return;
+                }
+                document.getElementById("playlistEditorName").value = "";
+                document.getElementById("playlistEditorDescription").value = "";
+                setMessage("Created " + (result.data.name || "the playlist") + ".");
+                loadPlaylists(true, true);
+            }).catch(function () {
+                state.busy = false;
+                setMessage("Could not create the playlist.", true);
+            });
+        });
+        document.getElementById("playlistEditorRefresh").addEventListener("click", function () {
+            loadPlaylists(true);
+        });
+        document.getElementById("playlistEditorMore").addEventListener("click", function () {
+            loadPlaylists(false);
+        });
+        document.getElementById("playlistEditorBack").addEventListener("click", showLibrary);
+        document.getElementById("playlistEditorSave").addEventListener("submit", function (event) {
+            event.preventDefault();
+            if (!state.detailId || state.busy) return;
+            state.busy = true;
+            request(ROOT + encodeURIComponent(state.detailId) + "/details/", {
+                name: document.getElementById("playlistEditorDetailName").value,
+                description: document.getElementById("playlistEditorDetailDescription").value
+            }).then(function (result) {
+                state.busy = false;
+                if (!result.ok) {
+                    setMessage(result.data.error || "Could not save the playlist.", true);
+                    return;
+                }
+                setMessage("Saved.");
+                openDetail(state.detailId, state.detailOffset);
+            }).catch(function () {
+                state.busy = false;
+                setMessage("Could not save the playlist.", true);
+            });
+        });
+        document.getElementById("playlistEditorDelete").addEventListener("click", function () {
+            if (!state.detailId || state.busy) return;
+            var name = document.getElementById("playlistEditorDetailName").value || "this playlist";
+            if (!window.confirm("Remove " + name + " from your library? Spotify does not erase the playlist itself.")) {
+                return;
+            }
+            state.busy = true;
+            request(ROOT + encodeURIComponent(state.detailId) + "/library/", {}).then(function (result) {
+                state.busy = false;
+                if (!result.ok) {
+                    setMessage(result.data.error || "Could not remove the playlist.", true);
+                    return;
+                }
+                showLibrary();
+                setMessage("Removed from your library.");
+                loadPlaylists(true, true);
+            }).catch(function () {
+                state.busy = false;
+                setMessage("Could not remove the playlist.", true);
+            });
+        });
+        document.getElementById("playlistEditorAdd").addEventListener("submit", function (event) {
+            event.preventDefault();
+            if (!state.detailId || state.busy) return;
+            var uri = document.getElementById("playlistEditorUri").value.trim();
+            if (!uri) {
+                setMessage("Enter a track URI.", true);
+                return;
+            }
+            state.busy = true;
+            request(ROOT + encodeURIComponent(state.detailId) + "/items/add/", { uri: uri }).then(function (result) {
+                state.busy = false;
+                if (!result.ok) {
+                    setMessage(result.data.error || "Could not add that track.", true);
+                    return;
+                }
+                document.getElementById("playlistEditorUri").value = "";
+                setMessage("Added. It is at the end of the playlist.");
+                openDetail(state.detailId, "end");
+            }).catch(function () {
+                state.busy = false;
+                setMessage("Could not add that track.", true);
+            });
+        });
+        document.getElementById("playlistEditorTracksMore").addEventListener("click", function () {
+            if (!state.detailId) return;
+            openDetail(state.detailId, state.detailOffset + 50);
+        });
+        var tab = document.getElementById("tab-playlist-editor");
+        if (tab) {
+            tab.addEventListener("click", function () {
+                if (!state.detailId && !state.playlists.length) loadPlaylists(true);
+            });
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        bindEditor();
+        var list = document.getElementById("tracksList");
+        if (list && window.MutationObserver) {
+            var observer = new MutationObserver(function () {
+                enhanceOpenPlaylist();
+            });
+            observer.observe(list, { childList: true });
+        }
+    });
+})();
+</script>

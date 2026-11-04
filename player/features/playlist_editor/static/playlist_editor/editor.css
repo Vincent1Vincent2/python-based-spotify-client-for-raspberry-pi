@@ -1,0 +1,124 @@
+/* Playlist editor. Flat rules on the same variables as the player. */
+
+.playlist-editor-note,
+.playlist-editor-message {
+    margin: 0 0 var(--spacing-md);
+    line-height: 1.45;
+}
+
+.playlist-editor-message:empty {
+    display: none;
+}
+
+.playlist-editor-message.is-error {
+    background: var(--color-gray-light);
+    border: var(--border-width) solid var(--color-border);
+    padding: var(--spacing-sm);
+}
+
+.playlist-editor-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+}
+
+.playlist-editor-label {
+    font-weight: 600;
+}
+
+.playlist-editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    margin: var(--spacing-md) 0;
+}
+
+.playlist-editor-list {
+    display: grid;
+    gap: var(--spacing-sm);
+}
+
+.playlist-editor-choice {
+    width: 100%;
+    text-align: left;
+    background: var(--color-bg);
+    border: var(--border-width) solid var(--color-border);
+    color: var(--color-text);
+    padding: var(--spacing-md);
+    cursor: pointer;
+}
+
+.playlist-editor-choice:hover,
+.playlist-editor-choice:focus {
+    background: var(--color-text);
+    color: var(--color-bg);
+}
+
+.playlist-editor-choice-name {
+    font-weight: 600;
+    margin-bottom: var(--spacing-xs);
+}
+
+.playlist-editor-meta {
+    font-size: 0.9rem;
+    color: var(--color-gray);
+}
+
+.playlist-editor-choice:hover .playlist-editor-meta,
+.playlist-editor-choice:focus .playlist-editor-meta {
+    color: var(--color-bg);
+}
+
+#playlistEditorLibrary.is-hidden,
+.playlist-editor-detail {
+    display: none;
+}
+
+.playlist-editor-detail.is-open {
+    display: block;
+}
+
+.playlist-editor-track {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) 0;
+    border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.playlist-editor-track-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.playlist-editor-track-name {
+    font-weight: 600;
+}
+
+.playlist-editor-mini {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+}
+
+.playlist-editor-detail-add,
+.playlist-editor-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: center;
+}
+
+.playlist-editor-detail-add {
+    margin-top: var(--spacing-sm);
+    width: 100%;
+}
+
+.playlist-editor-detail-add .search-input {
+    flex: 1;
+    min-width: 180px;
+}
+
+.playlist-editor-row-actions {
+    margin-top: 6px;
+}

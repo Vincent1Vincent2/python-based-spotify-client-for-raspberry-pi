@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import include, path
 from . import views
 
 urlpatterns = [
@@ -34,6 +34,7 @@ urlpatterns = [
     path('feel/start/', views.feel_start_view, name='feel_start'),
     path('feel/advance/', views.feel_advance_view, name='feel_advance'),
     path('feel/stop/', views.feel_stop_view, name='feel_stop'),
+    path('playlist-editor/', include('player.features.playlist_editor.urls')),
     path('settings/', views.settings_view, name='settings'),
     path('settings/audio/', views.update_audio_settings, name='update_audio_settings'),
     path('settings/reboot/', views.reboot_system, name='reboot_system'),

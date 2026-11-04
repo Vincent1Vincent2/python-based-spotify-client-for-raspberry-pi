@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'player',
+    'player.features.playlist_editor',
     'wizard',
 ]
 
