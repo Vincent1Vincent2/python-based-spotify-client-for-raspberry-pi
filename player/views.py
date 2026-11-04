@@ -19,7 +19,8 @@ SPOTIFY_SCOPE = (
     'user-modify-playback-state user-read-playback-state '
     'user-read-currently-playing user-read-playback-position streaming '
     'playlist-read-private playlist-read-collaborative '
-    'playlist-modify-private user-library-read'
+    'playlist-modify-private user-library-read '
+    'user-library-modify'
 )
 
 
@@ -110,22 +111,20 @@ def index(request):
 def login_view(request):
     """
     Show login page or initiate Spotify OAuth login.
-    
-    Now also offers any accounts already linked on this device so they
-    can be reactivated without going through OAuth again - the "auth=1"
-    flow is specifically for linking a NEW account.
+
+    Already-linked accounts can be reactivated without OAuth. auth=1
+    always starts authorization, including when a session is already
+    active, so Books can ask the listener to grant user-library-modify.
     """
-    # If already authenticated, redirect to index
-    sp = get_spotify_client(request)
-    if sp:
-        return redirect('index')
-    
-    # If 'auth' parameter is present, initiate OAuth flow to link a new account
     if request.GET.get('auth') == '1':
         api = SpotifyAPI()
         auth_url = api.get_authorization_url(SPOTIFY_SCOPE)
         return redirect(auth_url)
-    
+
+    sp = get_spotify_client(request)
+    if sp:
+        return redirect('index')
+
     accounts = SpotifyAccount.objects.all()
     return render(request, 'player/login.html', {'accounts': accounts})
 

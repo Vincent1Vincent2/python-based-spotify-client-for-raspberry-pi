@@ -245,11 +245,13 @@ body {
 
 .tabs-nav {
     display: flex;
+    flex-wrap: wrap;
     border-bottom: var(--border-width) solid var(--color-border);
 }
 
 .tab-button {
-    flex: 1;
+    flex: 1 1 120px;
+    min-width: 96px;
     background: var(--color-bg);
     border: none;
     border-right: var(--border-width) solid var(--color-border);
@@ -300,7 +302,7 @@ body {
     color: var(--color-text);
 }
 
-.albums-section, .songs-section, .discover-section {
+.albums-section, .songs-section, .discover-section, .books-section {
     margin-top: 0;
 }
 
@@ -1016,5 +1018,21 @@ body {
     margin-top: 10px;
     font-size: 0.85rem;
     color: var(--color-gray);
+}
+
+.books-note {
+    margin: 0 0 16px;
+    line-height: 1.45;
+}
+
+.books-error:not(:empty) {
+    margin: 0 0 16px;
+    line-height: 1.45;
+}
+
+.book-description {
+    max-height: 7.5em;
+    overflow: auto;
+    white-space: pre-wrap;
 }
     
