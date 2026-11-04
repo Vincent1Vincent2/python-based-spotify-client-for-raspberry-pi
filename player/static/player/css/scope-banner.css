@@ -1,0 +1,14 @@
+.scope-banner {
+    margin: -20px -20px 20px;
+    padding: 12px 16px;
+    background: var(--color-text, #1a1a1a);
+    color: var(--color-bg, #ffffff);
+    text-align: center;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+.scope-banner a {
+    color: inherit;
+    font-weight: 600;
+}

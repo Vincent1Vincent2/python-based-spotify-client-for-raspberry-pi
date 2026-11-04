@@ -8,6 +8,8 @@
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
     {% load static %}
     <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
+    <link rel="stylesheet" href="{% static 'player/css/scope-banner.css' %}">
+    <script src="{% static 'player/js/scope-banner.js' %}"></script>
     <style>
         /* Scrub bar - scoped here rather than player.css so this
            feature stays self-contained; can be moved into player.css
@@ -1625,6 +1627,9 @@
         function feelErrorHtml(data) {
             const message = escapeHtml((data && data.error) || 'Feel radio did not start.');
             if (data && data.code === 'needs_scope') {
+                if (typeof window.spotipiNoteAuth === 'function') {
+                    window.spotipiNoteAuth(data);
+                }
                 return message + ' <a href="/login/?auth=1">Reconnect Spotify</a>';
             }
             return message;
