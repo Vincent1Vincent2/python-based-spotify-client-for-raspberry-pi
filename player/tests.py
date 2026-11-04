@@ -1,4 +1,7 @@
 import json
+import re
+
+from django.template.loader import render_to_string
 from django.test import Client, TestCase
 
 from player.feel import (
@@ -342,3 +345,20 @@ class FeelPageTests(TestCase):
         status = client.get("/feel/status/")
         self.assertEqual(status.status_code, 200)
         self.assertFalse(status.json()["active"])
+
+
+class FocusRingTests(TestCase):
+    def test_player_page_links_focus_css_once(self):
+        html = render_to_string("player/index.html", {
+            "client_id": "client",
+            "access_token": "token",
+            "use_web_player": True,
+            "devices": [],
+            "accounts": [],
+            "active_account": None,
+            "selected_device_id": None,
+        })
+        links = re.findall(r"<link\b[^>]*player/css/focus\.css[^>]*>", html)
+        self.assertEqual(links, [
+            '<link rel="stylesheet" href="/static/player/css/focus.css">',
+        ])
