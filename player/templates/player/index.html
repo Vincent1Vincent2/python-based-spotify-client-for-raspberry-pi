@@ -8,6 +8,7 @@
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
     {% load static %}
     <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
+    <link rel="stylesheet" href="{% static 'player/css/sticky-player.css' %}">
     <style>
         /* Scrub bar - scoped here rather than player.css so this
            feature stays self-contained; can be moved into player.css
@@ -160,7 +161,7 @@
             </div>
         </div>
 
-        <div class="player-card">
+        <div class="player-card sticky-player">
             <div class="player-status" id="playerStatus">Initializing player...</div>
 
             <div class="track-info" id="trackInfo">
@@ -186,6 +187,16 @@
                 <button class="btn btn-play" id="playBtn" onclick="togglePlayback()" disabled>▶ Play</button>
                 <button class="btn btn-next" id="nextBtn" onclick="nextTrack()" disabled>⏭ Next</button>
             </div>
+        </div>
+
+        <div class="sticky-player-bar" id="stickyPlayerBar">
+            <div class="sticky-player-art-wrap">
+                <img class="sticky-player-art" id="stickyPlayerArt" alt="" hidden>
+            </div>
+            <div class="sticky-player-title" id="stickyPlayerTitle">No track playing</div>
+            <button type="button" class="btn btn-play" id="stickyPlayBtn" onclick="togglePlayback()" disabled>▶ Play</button>
+            <button type="button" class="btn btn-next" id="stickyNextBtn" onclick="nextTrack()" disabled>⏭ Next</button>
+        </div>
 
             <div class="device-selector">
                 <h3>Select Playback Device</h3>
@@ -339,7 +350,6 @@
             </div>
 
             <div class="status-indicator" id="statusIndicator"></div>
-        </div>
     </div>
 
     <script>
@@ -1933,6 +1943,60 @@
         window.addEventListener('load', () => {
             loadPlaylists(true);
         });
+
+        // Compact bar mirrors #playBtn (label + disabled) and the track title/art.
+        // Playback still goes through togglePlayback / nextTrack — no second player.
+        (function mirrorStickyPlayer() {
+            const playBtn = document.getElementById('playBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const trackInfo = document.getElementById('trackInfo');
+            const stickyPlay = document.getElementById('stickyPlayBtn');
+            const stickyNext = document.getElementById('stickyNextBtn');
+            const stickyTitle = document.getElementById('stickyPlayerTitle');
+            const stickyArt = document.getElementById('stickyPlayerArt');
+            if (!playBtn || !stickyPlay || !trackInfo) return;
+
+            function syncStickyPlayer() {
+                stickyPlay.textContent = playBtn.textContent;
+                stickyPlay.disabled = playBtn.disabled;
+                if (stickyNext && nextBtn) stickyNext.disabled = nextBtn.disabled;
+
+                const nameEl = trackInfo.querySelector('.track-name');
+                if (stickyTitle && nameEl) stickyTitle.textContent = nameEl.textContent;
+
+                const imageEl = trackInfo.querySelector('.track-image');
+                const src = imageEl ? imageEl.getAttribute('src') : '';
+                if (!stickyArt) return;
+                if (src) {
+                    stickyArt.src = src;
+                    stickyArt.alt = nameEl ? nameEl.textContent : 'Album art';
+                    stickyArt.hidden = false;
+                } else {
+                    stickyArt.hidden = true;
+                    stickyArt.removeAttribute('src');
+                }
+            }
+
+            syncStickyPlayer();
+            const observer = new MutationObserver(syncStickyPlayer);
+            observer.observe(playBtn, {
+                subtree: true,
+                childList: true,
+                characterData: true,
+                attributes: true,
+                attributeFilter: ['disabled'],
+            });
+            if (nextBtn) {
+                observer.observe(nextBtn, { attributes: true, attributeFilter: ['disabled'] });
+            }
+            observer.observe(trackInfo, {
+                subtree: true,
+                childList: true,
+                characterData: true,
+                attributes: true,
+                attributeFilter: ['src'],
+            });
+        })();
     </script>
 </body>
 

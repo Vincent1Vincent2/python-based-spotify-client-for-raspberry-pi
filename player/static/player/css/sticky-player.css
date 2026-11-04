@@ -1,0 +1,114 @@
+/* Now-playing stays put while playlists and search scroll.
+   Wide viewports: the existing player card sticks to the top.
+   Viewports under 800px: a compact bar pins to the bottom. */
+
+.sticky-player-bar {
+    display: none;
+}
+
+@media (min-width: 800px) {
+    .player-card.sticky-player {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        margin-bottom: 16px;
+        background: var(--color-bg);
+    }
+}
+
+/* Shorter wide viewports: same card, tightened so search and playlists
+   stay visible under the stuck now-playing block. */
+@media (min-width: 800px) and (max-height: 980px) {
+    .player-card.sticky-player {
+        padding: 16px 20px 12px;
+    }
+
+    .player-card.sticky-player .player-status {
+        margin-bottom: 10px;
+        padding: 8px 12px;
+    }
+
+    .player-card.sticky-player .track-image {
+        width: 120px;
+        height: 120px;
+        margin-bottom: 10px;
+    }
+
+    .player-card.sticky-player .track-info {
+        margin-bottom: 12px;
+    }
+
+    .player-card.sticky-player .track-name {
+        font-size: 1.45rem;
+        margin-bottom: 4px;
+    }
+
+    .player-card.sticky-player .track-artist,
+    .player-card.sticky-player .track-album {
+        font-size: 1rem;
+        margin-bottom: 0;
+    }
+
+    .player-card.sticky-player .progress-container {
+        margin-bottom: 10px;
+    }
+
+    .player-card.sticky-player .controls {
+        margin-bottom: 0;
+    }
+}
+
+@media (max-width: 799px) {
+    body {
+        padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .sticky-player-bar {
+        display: flex;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 50;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+        background: var(--color-bg);
+        border-top: var(--border-width) solid var(--color-border);
+    }
+
+    .sticky-player-art-wrap {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 44px;
+        background: var(--color-gray-light);
+        border: var(--border-width) solid var(--color-border);
+        overflow: hidden;
+    }
+
+    .sticky-player-art {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    .sticky-player-title {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-weight: 600;
+        font-size: 0.95rem;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .sticky-player-bar .btn {
+        min-height: 44px;
+        padding: 8px 12px;
+        font-size: 0.85rem;
+        white-space: nowrap;
+        flex: 0 0 auto;
+    }
+}
