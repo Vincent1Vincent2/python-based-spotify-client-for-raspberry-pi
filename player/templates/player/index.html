@@ -8,6 +8,7 @@
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
     {% load static %}
     <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
+    <link rel="stylesheet" href="{% static 'player/css/playlist-cards.css' %}">
     <style>
         /* Scrub bar - scoped here rather than player.css so this
            feature stays self-contained; can be moved into player.css
@@ -1165,20 +1166,41 @@
                 });
         }
 
+        function playlistCoverUrl(image) {
+            if (typeof image !== 'string') {
+                return '';
+            }
+            const trimmed = image.trim();
+            if (!/^https?:\/\//i.test(trimmed)) {
+                return '';
+            }
+            return trimmed;
+        }
+
         function displayPlaylists(playlists) {
             const grid = document.getElementById('playlistsGrid');
             if (playlists.length === 0) {
-                grid.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No playlists found</div>';
+                grid.innerHTML = '<div class="playlist-card-empty">No playlists found</div>';
                 return;
             }
 
             grid.innerHTML = playlists.map(playlist => {
+                const name = playlist.name || 'Untitled playlist';
+                const safeName = escapeHtml(name);
+                const cover = playlistCoverUrl(playlist.image);
+                const count = Number(playlist.tracks_count);
+                const trackCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+                const countLabel = trackCount === 1 ? '1 track' : `${trackCount} tracks`;
+                const initial = escapeHtml((name.trim().charAt(0) || '?').toUpperCase());
+                const coverHtml = cover
+                    ? `<img src="${escapeHtml(cover)}" alt="" class="playlist-card-image" loading="lazy">`
+                    : `<span class="playlist-card-fallback" aria-hidden="true">${initial}</span>`;
                 return `
-                    <div class="playlist-item" onclick="viewPlaylist('${playlist.id}')">
-                        <img src="${playlist.image || 'https://via.placeholder.com/180?text=No+Image'}" alt="${playlist.name}" class="playlist-image">
-                        <div class="playlist-name">${playlist.name}</div>
-                        <div class="playlist-info">${playlist.tracks_count} tracks</div>
-                    </div>
+                    <button type="button" class="playlist-card" onclick="viewPlaylist('${escapeHtml(playlist.id)}')">
+                        <span class="playlist-card-cover">${coverHtml}</span>
+                        <span class="playlist-card-name">${safeName}</span>
+                        <span class="playlist-card-count">${countLabel}</span>
+                    </button>
                 `;
             }).join('');
         }

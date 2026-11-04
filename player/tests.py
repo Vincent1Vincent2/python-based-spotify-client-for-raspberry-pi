@@ -342,3 +342,99 @@ class FeelPageTests(TestCase):
         status = client.get("/feel/status/")
         self.assertEqual(status.status_code, 200)
         self.assertFalse(status.json()["active"])
+
+
+class PlaylistCardTests(TestCase):
+    def test_playlist_json_includes_the_first_image(self):
+        from player.views import build_playlist_json
+
+        playlist = {
+            "id": "pl1",
+            "name": "Night Drive",
+            "description": "late",
+            "images": [
+                {"url": "https://i.scdn.co/image/large", "width": 640, "height": 640},
+                {"url": "https://i.scdn.co/image/small", "width": 64, "height": 64},
+            ],
+            "tracks": {"total": 12},
+            "owner": {"display_name": "Ada", "id": "ada"},
+            "public": False,
+            "collaborative": False,
+        }
+
+        card = build_playlist_json(playlist)
+
+        self.assertEqual(card["image"], "https://i.scdn.co/image/large")
+        self.assertEqual(card["name"], "Night Drive")
+        self.assertEqual(card["tracks_count"], 12)
+        self.assertEqual(card["owner"], "Ada")
+
+    def test_playlists_view_uses_the_image_already_on_the_list_item(self):
+        from unittest.mock import patch
+
+        from django.test import RequestFactory
+
+        from player.views import playlists
+
+        item = {
+            "id": "pl9",
+            "name": "Dawn",
+            "description": "",
+            "images": [{"url": "https://i.scdn.co/image/cover", "width": 300, "height": 300}],
+            "tracks": {"total": 4},
+            "owner": {"display_name": None, "id": "ada"},
+            "public": True,
+            "collaborative": False,
+        }
+        calls = []
+
+        class Api:
+            def get_user_playlists(self, limit=50, offset=0):
+                calls.append(("playlists", limit, offset))
+                return FakeResponse({
+                    "items": [item, None],
+                    "next": None,
+                    "total": 1,
+                })
+
+        request = RequestFactory().get("/playlists/?offset=0&limit=50")
+        with patch("player.views.get_spotify_client", return_value=Api()):
+            response = playlists(request)
+
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.content)
+        self.assertEqual(calls, [("playlists", 50, 0)])
+        self.assertEqual(len(body["playlists"]), 1)
+        self.assertEqual(body["playlists"][0]["image"], "https://i.scdn.co/image/cover")
+        self.assertEqual(body["playlists"][0]["tracks_count"], 4)
+        self.assertEqual(body["playlists"][0]["owner"], "ada")
+
+    def test_player_page_links_playlist_cards_once_and_keeps_sort_buttons(self):
+        import time
+        from unittest.mock import patch
+
+        account = SpotifyAccount.objects.create(
+            spotify_user_id="card-user",
+            display_name="Cards",
+            access_token="access",
+            refresh_token="refresh",
+            token_expires_at=time.time() + 3600,
+        )
+        client = Client()
+        session = client.session
+        session["active_account_id"] = account.id
+        session["use_web_player"] = True
+        session.save()
+
+        with patch("player.spotify_api.SpotifyAPI.get_devices", return_value=FakeResponse({"devices": []})), \
+                patch("player.spotify_api.SpotifyAPI.get_current_playback", return_value=FakeResponse({}, status=204)):
+            page = client.get("/")
+
+        self.assertEqual(page.status_code, 200)
+        body = page.content.decode()
+        self.assertEqual(body.count("player/css/playlist-cards.css"), 1)
+        self.assertIn('id="sort-default"', body)
+        self.assertIn('id="sort-name"', body)
+        self.assertIn('id="sort-tracks"', body)
+        self.assertIn("function displayPlaylists", body)
+        self.assertIn("playlist-card-cover", body)
