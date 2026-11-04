@@ -19,7 +19,7 @@ SPOTIFY_SCOPE = (
     'user-modify-playback-state user-read-playback-state '
     'user-read-currently-playing user-read-playback-position streaming '
     'playlist-read-private playlist-read-collaborative '
-    'playlist-modify-private user-library-read'
+    'playlist-modify-private user-library-read user-library-modify'
 )
 
 
@@ -115,16 +115,17 @@ def login_view(request):
     can be reactivated without going through OAuth again - the "auth=1"
     flow is specifically for linking a NEW account.
     """
-    # If already authenticated, redirect to index
-    sp = get_spotify_client(request)
-    if sp:
-        return redirect('index')
-    
-    # If 'auth' parameter is present, initiate OAuth flow to link a new account
+    # auth=1 is the reconnect path (a missing library scope, or a new
+    # account). It has to start OAuth even when a session already exists.
     if request.GET.get('auth') == '1':
         api = SpotifyAPI()
         auth_url = api.get_authorization_url(SPOTIFY_SCOPE)
         return redirect(auth_url)
+
+    # If already authenticated, redirect to index
+    sp = get_spotify_client(request)
+    if sp:
+        return redirect('index')
     
     accounts = SpotifyAccount.objects.all()
     return render(request, 'player/login.html', {'accounts': accounts})
@@ -439,6 +440,7 @@ def current_playback(request):
                     'name': item.get('name', 'Unknown Track'),
                     'artists': [artist.get('name', 'Unknown Artist') for artist in artists],
                     'album': album.get('name', 'Unknown Album'),
+                    'album_uri': album.get('uri'),
                     'image': album_images[0]['url'] if album_images and len(album_images) > 0 else None,
                     'duration_ms': item.get('duration_ms', 0),
                     'progress_ms': progress_ms,
