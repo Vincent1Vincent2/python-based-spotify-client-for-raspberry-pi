@@ -752,20 +752,57 @@
             setInterval(checkCurrentPlayback, 3000); // Check every 3 seconds
         }
 
+        function playbackFailureMessage(data) {
+            if (!data) return '';
+            const error = data.error;
+            if (typeof error === 'string' && error.trim()) return error.trim();
+            if (error && typeof error === 'object' && typeof error.message === 'string' && error.message.trim()) {
+                return error.message.trim();
+            }
+            if (data.code === 'needs_scope') return 'Reconnect Spotify to control playback.';
+            return '';
+        }
+
+        function settlePlaybackCommand(data, onSuccess) {
+            // token_expired already had no status message. Leave that path
+            // alone, including a success status if one is ever present.
+            if (data && data.code === 'token_expired') {
+                if (data.status && typeof onSuccess === 'function') onSuccess();
+                return;
+            }
+            if (data && data.code === 'needs_scope' && typeof window.spotipiNoteAuth === 'function') {
+                window.spotipiNoteAuth(data);
+            }
+            const failure = playbackFailureMessage(data);
+            const failed = !!(data && (data.error || data.code === 'needs_scope'));
+            if (failed) {
+                const statusEl = document.getElementById('playerStatus');
+                if (statusEl) statusEl.textContent = failure || 'Playback failed';
+                return;
+            }
+            if (data && data.status && typeof onSuccess === 'function') onSuccess();
+        }
+
+        function postPlaybackCommand(url, onSuccess) {
+            fetch(url, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => settlePlaybackCommand(data, onSuccess))
+                .catch(() => {
+                    const statusEl = document.getElementById('playerStatus');
+                    if (statusEl) statusEl.textContent = 'Playback failed';
+                });
+        }
+
         function togglePlayback() {
             if (useWebPlayer && player) {
                 player.togglePlay();
             } else {
                 // Use REST API for external devices
                 const endpoint = isPlaying ? '/pause/' : '/play/';
-                fetch(endpoint, { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status) {
-                            isPlaying = !isPlaying;
-                            updatePlayButton();
-                        }
-                    });
+                postPlaybackCommand(endpoint, () => {
+                    isPlaying = !isPlaying;
+                    updatePlayButton();
+                });
             }
         }
 
@@ -773,8 +810,7 @@
             if (useWebPlayer && player) {
                 player.nextTrack();
             } else {
-                fetch('/next/', { method: 'POST' })
-                    .then(response => response.json());
+                postPlaybackCommand('/next/');
             }
         }
 
@@ -782,8 +818,7 @@
             if (useWebPlayer && player) {
                 player.previousTrack();
             } else {
-                fetch('/previous/', { method: 'POST' })
-                    .then(response => response.json());
+                postPlaybackCommand('/previous/');
             }
         }
 
