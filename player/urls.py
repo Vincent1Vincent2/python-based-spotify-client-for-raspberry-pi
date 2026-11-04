@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .features.smart_mixes.views import smart_mix_view
 
 urlpatterns = [
     path('', views.index, name='index'),
@@ -34,6 +35,7 @@ urlpatterns = [
     path('feel/start/', views.feel_start_view, name='feel_start'),
     path('feel/advance/', views.feel_advance_view, name='feel_advance'),
     path('feel/stop/', views.feel_stop_view, name='feel_stop'),
+    path('mix/', smart_mix_view, name='smart_mix'),
     path('settings/', views.settings_view, name='settings'),
     path('settings/audio/', views.update_audio_settings, name='update_audio_settings'),
     path('settings/reboot/', views.reboot_system, name='reboot_system'),
