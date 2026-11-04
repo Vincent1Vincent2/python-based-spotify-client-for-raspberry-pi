@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import include, path
 from . import views
 from player.features.search_browser.views import search_browser
 from .features.library_home import views as library_home
@@ -30,6 +30,7 @@ urlpatterns = [
     path('volume/', playback_modes.volume, name='volume'),
     path('queue/', views.queue_track, name='queue'),
     path('play-track/', views.play_track, name='play_track'),
+    path('track-actions/', include('player.features.track_actions.urls')),
     path('playlists/', views.playlists, name='playlists'),
     path('playlist-pins/pin/', pin_playlist, name='playlist_pin'),
     path('playlist-pins/tag/', tag_playlist, name='playlist_tag'),

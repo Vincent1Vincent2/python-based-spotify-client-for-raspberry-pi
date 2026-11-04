@@ -19,8 +19,7 @@ SPOTIFY_SCOPE = (
     'user-modify-playback-state user-read-playback-state '
     'user-read-currently-playing user-read-playback-position streaming '
     'playlist-read-private playlist-read-collaborative '
-    'playlist-modify-private user-library-read '
-    'user-read-recently-played'
+    'playlist-modify-private user-library-read user-library-modify'
 )
 
 
@@ -936,6 +935,7 @@ def saved_tracks(request):
                 'name': track['name'],
                 'artists': [artist['name'] for artist in track['artists']],
                 'album': track['album']['name'],
+                'album_id': (track.get('album') or {}).get('id') or '',
                 'image': track['album']['images'][0]['url'] if track['album']['images'] else None,
                 'duration_ms': track.get('duration_ms', 0),
                 'uri': track['uri'],
@@ -1141,6 +1141,7 @@ def discover(request):
                                     'name': track['name'],
                                     'artists': [artist['name'] for artist in track['artists']],
                                     'album': track['album']['name'],
+                                    'album_id': (track.get('album') or {}).get('id') or '',
                                     'image': track['album']['images'][0]['url'] if track['album']['images'] else None,
                                     'duration_ms': track.get('duration_ms', 0),
                                     'uri': track['uri'],
@@ -1200,6 +1201,7 @@ def album_detail(request):
                         'name': track['name'],
                         'artists': [artist['name'] for artist in track['artists']],
                         'album': album['name'],
+                        'album_id': album.get('id') or '',
                         'image': track_image,
                         'duration_ms': track.get('duration_ms', 0),
                         'uri': track['uri'],
@@ -1263,6 +1265,7 @@ def playlist_detail(request):
                         'name': track['name'],
                         'artists': [artist['name'] for artist in track['artists']],
                         'album': track['album']['name'],
+                        'album_id': (track.get('album') or {}).get('id') or '',
                         'image': track['album']['images'][-1]['url'] if track['album']['images'] else None,
                         'duration_ms': track.get('duration_ms', 0),
                         'uri': track['uri'],
