@@ -367,6 +367,22 @@ class SpotifyAPI:
         if device_id:
             params['device_id'] = device_id
         return self.post('me/player/queue', params=params)
+
+    def get_queue(self):
+        """
+        Get the user's playback queue.
+
+        GET me/player/queue
+
+        The body has currently_playing (a track, an episode, or null)
+        and queue (the upcoming tracks and episodes). There is no
+        offset or limit parameter. This call does not add, remove,
+        or reorder anything.
+
+        Returns:
+            Response object
+        """
+        return self.get('me/player/queue')
     
     def get_user_playlists(self, limit=50, offset=0):
         """

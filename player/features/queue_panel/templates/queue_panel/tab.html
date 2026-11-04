@@ -1,0 +1,234 @@
+<div class="tab-content" id="content-queue">
+    <div class="queue-panel">
+        <div class="section-header">
+            <h3>Queue</h3>
+            <button class="btn" type="button" id="queueRefresh">Refresh</button>
+        </div>
+        <p class="queue-note">
+            New items go to the end of the queue. Add to Queue on a song still
+            uses that existing control and appends there.
+            Spotify's public API cannot remove a queued item, reorder the queue,
+            or insert one at the front.
+            This list is the current item plus the upcoming items Spotify returns.
+            That read is not paged and stops after the items Spotify includes
+            (about 20). This screen does not skip tracks to read further.
+        </p>
+        <div id="queueMessage" class="queue-message" hidden></div>
+        <div id="queueCurrent">
+            <div class="queue-empty">Open this tab to load the queue.</div>
+        </div>
+        <div id="queueUpcoming"></div>
+    </div>
+</div>
+<style>
+    .queue-note {
+        margin: 0 0 16px;
+        line-height: 1.45;
+    }
+
+    .queue-message {
+        margin: 0 0 12px;
+    }
+
+    .queue-label {
+        margin: 16px 0 8px;
+        font-size: 0.85rem;
+        color: var(--color-gray);
+    }
+
+    .queue-empty {
+        padding: 8px 0 12px;
+        opacity: 0.7;
+    }
+
+    .queue-row {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 12px 0;
+        border-bottom: var(--border-width) solid var(--color-border);
+    }
+
+    .queue-index {
+        min-width: 1.5rem;
+        font-size: 0.85rem;
+        color: var(--color-gray);
+    }
+
+    .queue-row img,
+    .queue-placeholder {
+        width: 50px;
+        height: 50px;
+        object-fit: cover;
+        border: var(--border-width) solid var(--color-border);
+        flex: 0 0 auto;
+    }
+
+    .queue-placeholder {
+        background: var(--color-gray-light);
+    }
+
+    .queue-text {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .queue-title {
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+
+    .queue-subtitle,
+    .queue-duration {
+        font-size: 0.85rem;
+    }
+
+    .queue-duration {
+        min-width: 52px;
+        text-align: right;
+    }
+</style>
+<script>
+(function () {
+    var messageEl = document.getElementById('queueMessage');
+    var currentEl = document.getElementById('queueCurrent');
+    var upcomingEl = document.getElementById('queueUpcoming');
+    var requestId = 0;
+
+    function setMessage(text) {
+        if (!text) {
+            messageEl.hidden = true;
+            messageEl.textContent = '';
+            return;
+        }
+        messageEl.hidden = false;
+        messageEl.textContent = text;
+    }
+
+    function renderItem(item, indexLabel) {
+        var row = document.createElement('div');
+        row.className = 'queue-row';
+
+        if (indexLabel) {
+            var index = document.createElement('div');
+            index.className = 'queue-index';
+            index.textContent = indexLabel;
+            row.appendChild(index);
+        }
+
+        if (item.image) {
+            var image = document.createElement('img');
+            image.alt = '';
+            image.src = item.image;
+            row.appendChild(image);
+        } else {
+            var placeholder = document.createElement('div');
+            placeholder.className = 'queue-placeholder';
+            row.appendChild(placeholder);
+        }
+
+        var text = document.createElement('div');
+        text.className = 'queue-text';
+        var title = document.createElement('div');
+        title.className = 'queue-title';
+        title.textContent = item.name || 'Unknown';
+        var subtitle = document.createElement('div');
+        subtitle.className = 'queue-subtitle';
+        var subtitleText = item.subtitle || '';
+        if (item.type === 'episode') {
+            subtitleText = subtitleText ? 'Episode · ' + subtitleText : 'Episode';
+        }
+        subtitle.textContent = subtitleText;
+        text.appendChild(title);
+        text.appendChild(subtitle);
+        row.appendChild(text);
+
+        if (item.duration_label) {
+            var duration = document.createElement('div');
+            duration.className = 'queue-duration';
+            duration.textContent = item.duration_label;
+            row.appendChild(duration);
+        }
+        return row;
+    }
+
+    function renderQueue(data) {
+        setMessage('');
+        currentEl.textContent = '';
+        upcomingEl.textContent = '';
+
+        var currentLabel = document.createElement('div');
+        currentLabel.className = 'queue-label';
+        currentLabel.textContent = 'Now playing';
+        currentEl.appendChild(currentLabel);
+        if (data.currently_playing) {
+            currentEl.appendChild(renderItem(data.currently_playing, ''));
+        } else {
+            var emptyCurrent = document.createElement('div');
+            emptyCurrent.className = 'queue-empty';
+            emptyCurrent.textContent = 'Nothing is playing.';
+            currentEl.appendChild(emptyCurrent);
+        }
+
+        var upcomingLabel = document.createElement('div');
+        upcomingLabel.className = 'queue-label';
+        upcomingLabel.textContent = 'In the queue';
+        upcomingEl.appendChild(upcomingLabel);
+
+        var items = data.queue || [];
+        if (!items.length) {
+            var emptyQueue = document.createElement('div');
+            emptyQueue.className = 'queue-empty';
+            emptyQueue.textContent = 'Nothing is queued after the current item.';
+            upcomingEl.appendChild(emptyQueue);
+            return;
+        }
+        items.forEach(function (item, index) {
+            upcomingEl.appendChild(renderItem(item, String(index + 1)));
+        });
+    }
+
+    function loadPlaybackQueue() {
+        var id = ++requestId;
+        setMessage('');
+        currentEl.textContent = '';
+        upcomingEl.textContent = '';
+        var loading = document.createElement('div');
+        loading.className = 'queue-empty';
+        loading.textContent = 'Loading queue...';
+        currentEl.appendChild(loading);
+
+        fetch('/playback-queue/')
+            .then(function (response) {
+                return response.json().then(function (data) {
+                    return { ok: response.ok, data: data };
+                }, function () {
+                    return { ok: false, data: { error: 'Could not load the queue.' } };
+                });
+            })
+            .then(function (result) {
+                if (id !== requestId) {
+                    return;
+                }
+                if (!result.ok) {
+                    currentEl.textContent = '';
+                    upcomingEl.textContent = '';
+                    setMessage((result.data && result.data.error) || 'Could not load the queue.');
+                    return;
+                }
+                renderQueue(result.data || {});
+            })
+            .catch(function () {
+                if (id !== requestId) {
+                    return;
+                }
+                currentEl.textContent = '';
+                upcomingEl.textContent = '';
+                setMessage('Could not load the queue.');
+            });
+    }
+
+    document.getElementById('queueRefresh').addEventListener('click', loadPlaybackQueue);
+    document.getElementById('tab-queue').addEventListener('click', loadPlaybackQueue);
+})();
+</script>

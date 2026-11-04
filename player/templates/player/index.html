@@ -233,6 +233,7 @@
                     <button class="tab-button" onclick="switchTab('songs')" id="tab-songs">Songs</button>
                     <button class="tab-button" onclick="switchTab('discover')" id="tab-discover">Discover</button>
                     <button class="tab-button" onclick="switchTab('feel')" id="tab-feel">Feel</button>
+                    <button class="tab-button" onclick="switchTab('queue')" id="tab-queue">Queue</button>
                 </div>
 
                 <div class="tab-content active" id="content-playlists">
@@ -328,6 +329,7 @@
                         <div id="feelTracks"></div>
                     </div>
                 </div>
+                {% include "queue_panel/tab.html" %}
             </div>
 
             <div class="playlist-detail-view" id="playlistDetailView">

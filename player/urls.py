@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .features.queue_panel.views import playback_queue
 
 urlpatterns = [
     path('', views.index, name='index'),
@@ -21,6 +22,7 @@ urlpatterns = [
     path('previous/', views.previous_track, name='previous'),
     path('seek/', views.seek, name='seek'),
     path('queue/', views.queue_track, name='queue'),
+    path('playback-queue/', playback_queue, name='playback_queue'),
     path('play-track/', views.play_track, name='play_track'),
     path('playlists/', views.playlists, name='playlists'),
     path('playlist-detail/', views.playlist_detail, name='playlist_detail'),
