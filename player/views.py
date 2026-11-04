@@ -12,6 +12,11 @@ from .spotify_api import (
 )
 from .feel import FeelError, FeelScopeError
 from .feel_radio import advance_feel_radio, feel_status, start_feel_radio, stop_feel_radio
+from .features.listening_stats.stats import (
+    ListeningStatsError,
+    ListeningStatsScopeError,
+    load_listening_stats,
+)
 from .models import SpotifyAccount
 
 
@@ -19,7 +24,8 @@ SPOTIFY_SCOPE = (
     'user-modify-playback-state user-read-playback-state '
     'user-read-currently-playing user-read-playback-position streaming '
     'playlist-read-private playlist-read-collaborative '
-    'playlist-modify-private user-library-read'
+    'playlist-modify-private user-library-read '
+    'user-read-recently-played'
 )
 
 
@@ -110,22 +116,22 @@ def index(request):
 def login_view(request):
     """
     Show login page or initiate Spotify OAuth login.
-    
-    Now also offers any accounts already linked on this device so they
-    can be reactivated without going through OAuth again - the "auth=1"
-    flow is specifically for linking a NEW account.
+
+    Already-linked accounts can be reactivated without OAuth. auth=1
+    always starts authorization, including when a session already
+    exists, so a missing scope can be granted and another account
+    can be linked.
     """
-    # If already authenticated, redirect to index
-    sp = get_spotify_client(request)
-    if sp:
-        return redirect('index')
-    
-    # If 'auth' parameter is present, initiate OAuth flow to link a new account
     if request.GET.get('auth') == '1':
         api = SpotifyAPI()
         auth_url = api.get_authorization_url(SPOTIFY_SCOPE)
         return redirect(auth_url)
-    
+
+    # If already authenticated, redirect to index
+    sp = get_spotify_client(request)
+    if sp:
+        return redirect('index')
+
     accounts = SpotifyAccount.objects.all()
     return render(request, 'player/login.html', {'accounts': accounts})
 
@@ -1422,3 +1428,21 @@ def feel_stop_view(request):
     if not account:
         return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     return JsonResponse(stop_feel_radio(account))
+
+
+@require_http_methods(["GET"])
+def listening_stats_view(request):
+    """
+    Listening stats from one Spotify read:
+    GET /me/player/recently-played?limit=50.
+    """
+    api = get_spotify_api(request)
+    if not api:
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
+    try:
+        stats = load_listening_stats(api)
+    except ListeningStatsScopeError as exc:
+        return JsonResponse({'error': str(exc), 'code': exc.code}, status=403)
+    except ListeningStatsError as exc:
+        return JsonResponse({'error': str(exc), 'code': exc.code}, status=400)
+    return JsonResponse(stats)

@@ -220,6 +220,15 @@ class SpotifyAPI:
         if additional_types:
             params['additional_types'] = additional_types
         return self.get('me/player/currently-playing', params=params if params else None)
+
+    def get_recently_played(self):
+        """
+        One page of recently played tracks.
+
+        Requires the user-read-recently-played scope. Limit stays at 50,
+        which is Spotify's maximum, so callers do not page this endpoint.
+        """
+        return self.get('me/player/recently-played', params={'limit': 50})
     
     def search(self, q, type='track', limit=20, offset=0):
         """
