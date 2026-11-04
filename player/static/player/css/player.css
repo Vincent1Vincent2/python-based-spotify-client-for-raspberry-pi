@@ -245,20 +245,23 @@ body {
 
 .tabs-nav {
     display: flex;
+    flex-wrap: wrap;
     border-bottom: var(--border-width) solid var(--color-border);
 }
 
 .tab-button {
-    flex: 1;
+    flex: 1 1 auto;
     background: var(--color-bg);
     border: none;
     border-right: var(--border-width) solid var(--color-border);
+    border-bottom: var(--border-width) solid var(--color-border);
     color: var(--color-text);
-    padding: 15px 20px;
+    padding: 15px 12px;
     font-size: 1rem;
     font-weight: 500;
     cursor: pointer;
     transition: var(--transition);
+    white-space: nowrap;
 }
 
 .tab-button:last-child {
@@ -1018,3 +1021,78 @@ body {
     color: var(--color-gray);
 }
     
+
+.rotation-note {
+    margin: 0 0 16px;
+    line-height: 1.45;
+}
+
+.rotation-ranges,
+.rotation-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.rotation-range {
+    background: var(--color-bg);
+    border: var(--border-width) solid var(--color-border);
+    color: var(--color-text);
+    padding: 12px 18px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.rotation-range.is-on,
+.rotation-range:hover,
+.rotation-kind.is-on {
+    background: var(--color-text);
+    color: var(--color-bg);
+}
+
+.rotation-status {
+    margin-bottom: 12px;
+    line-height: 1.45;
+}
+
+.rotation-status a {
+    color: inherit;
+    font-weight: 600;
+}
+
+.rotation-empty {
+    padding: 20px;
+    text-align: center;
+    opacity: 0.7;
+}
+
+.rotation-list .track-item {
+    width: 100%;
+    text-align: left;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font: inherit;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    border-radius: 0;
+}
+
+.rotation-rank {
+    width: 1.6rem;
+    font-weight: 600;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.rotation-artist {
+    cursor: default;
+}
+
+.rotation-artist:hover,
+.rotation-artist:hover .track-info {
+    background: transparent;
+    color: var(--color-text);
+}
