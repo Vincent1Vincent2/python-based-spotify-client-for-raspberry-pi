@@ -233,6 +233,7 @@
                     <button class="tab-button" onclick="switchTab('songs')" id="tab-songs">Songs</button>
                     <button class="tab-button" onclick="switchTab('discover')" id="tab-discover">Discover</button>
                     <button class="tab-button" onclick="switchTab('feel')" id="tab-feel">Feel</button>
+                    <button class="tab-button" onclick="switchTab('recent')" id="tab-recent">Recent</button>
                 </div>
 
                 <div class="tab-content active" id="content-playlists">
@@ -326,6 +327,17 @@
                         </div>
                         <div id="feelStatus"></div>
                         <div id="feelTracks"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="content-recent">
+                    <div class="recent-section" id="recentSection">
+                        <div class="section-header">
+                            <h3>Recently played</h3>
+                        </div>
+                        <div class="songs-list" id="recentList">
+                            <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading recently played...</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1570,7 +1582,99 @@
                 loadSongs(true);
             } else if (tabName === 'discover') {
                 loadDiscover(true);
+            } else if (tabName === 'recent') {
+                loadRecent();
             }
+        }
+
+        function formatPlayedAt(value) {
+            if (!value) return '';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return String(value);
+            return date.toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+            });
+        }
+
+        function loadRecent() {
+            const list = document.getElementById('recentList');
+            if (!list) return;
+            list.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">Loading recently played...</div>';
+            fetch('/recently-played/')
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    }).catch(function () {
+                        return { ok: false, data: {} };
+                    });
+                })
+                .then(function (result) {
+                    const data = result.data || {};
+                    if (data.code === 'needs_scope') {
+                        list.innerHTML = '<div style="text-align: center; padding: 20px;">Reconnect Spotify to show recently played tracks. <a href="/login/?auth=1">Reconnect Spotify</a></div>';
+                        return;
+                    }
+                    if (!result.ok || data.error) {
+                        list.innerHTML = '<div style="text-align: center; padding: 20px;">' + escapeHtml(data.error || 'Could not load recently played.') + '</div>';
+                        return;
+                    }
+                    displayRecent(data.items || []);
+                })
+                .catch(function () {
+                    list.innerHTML = '<div style="text-align: center; padding: 20px;">Could not load recently played.</div>';
+                });
+        }
+
+        function displayRecent(items) {
+            const list = document.getElementById('recentList');
+            if (!items.length) {
+                list.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No tracks played recently.</div>';
+                return;
+            }
+            list.innerHTML = items.map(function (item) {
+                const artists = (item.artists || []).join(', ');
+                const when = formatPlayedAt(item.played_at);
+                const uri = item.uri || '';
+                const image = item.image || 'https://via.placeholder.com/50?text=No+Image';
+                return ''
+                    + '<div class="track-item" data-uri="' + escapeAttr(uri) + '" onclick="playRecent(this.getAttribute(\'data-uri\'))">'
+                    + '<img src="' + escapeAttr(image) + '" alt="" class="track-image">'
+                    + '<div class="track-info">'
+                    + '<div class="track-name">' + escapeHtml(item.track) + '</div>'
+                    + '<div class="track-artist">' + escapeHtml(artists) + '</div>'
+                    + '<div class="recent-played-at" title="' + escapeAttr(item.played_at || '') + '">' + escapeHtml(when) + '</div>'
+                    + '</div></div>';
+            }).join('');
+        }
+
+        function playRecent(uri) {
+            if (!uri) return;
+            const params = new URLSearchParams({ uri: uri });
+            if (useWebPlayer && deviceId) params.set('device_id', deviceId);
+            const status = document.getElementById('statusIndicator');
+            fetch('/recently-played/play/?' + params.toString(), { method: 'POST' })
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    if (data && data.code === 'needs_scope') {
+                        status.innerHTML = 'Reconnect Spotify to show recently played tracks. <a href="/login/?auth=1">Reconnect Spotify</a>';
+                        return;
+                    }
+                    if (data && data.status === 'playing') {
+                        status.textContent = 'Playing...';
+                        setTimeout(function () { status.textContent = ''; }, 2000);
+                        if (typeof checkCurrentPlayback === 'function') {
+                            checkCurrentPlayback();
+                        }
+                    } else if (data && data.error) {
+                        status.textContent = 'Error: ' + data.error;
+                    }
+                })
+                .catch(function (error) {
+                    status.textContent = 'Error: ' + error;
+                });
         }
 
         let feelActive = false;
