@@ -1,0 +1,56 @@
+@import "variables.css";
+
+/* Layout only for a phone and a small kiosk touch screen.
+   Color, type, and effects stay in player.css. */
+
+@media (max-width: 700px) {
+    .header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--spacing-sm);
+    }
+
+    .header h1 {
+        width: 100%;
+        min-width: 0;
+        margin-bottom: 0;
+    }
+
+    .header-buttons {
+        position: static;
+        top: auto;
+        right: auto;
+        flex-wrap: wrap;
+        justify-content: center;
+        width: 100%;
+        max-width: 100%;
+        gap: var(--spacing-sm);
+    }
+
+    .controls {
+        flex-wrap: wrap;
+        row-gap: var(--spacing-md);
+        column-gap: var(--spacing-md);
+    }
+
+    .tabs-nav {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .tab-button {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+
+    button,
+    .settings-btn,
+    .logout-btn,
+    .feel-emotion {
+        min-height: 44px;
+    }
+}
