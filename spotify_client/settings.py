@@ -55,6 +55,8 @@ TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [BASE_DIR / 'player' / 'features' / 'song_radio' / 'templates'],
+        # Queue panel markup lives with player/features/queue_panel.
+        'DIRS': [BASE_DIR / 'player' / 'features' / 'queue_panel' / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

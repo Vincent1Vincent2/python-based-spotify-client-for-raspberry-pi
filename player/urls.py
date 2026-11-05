@@ -6,6 +6,7 @@ from .features.playback_modes import views as playback_modes
 from .features.playlist_pins import pin_playlist, playlist_marks, tag_playlist
 from .features.smart_mixes.views import smart_mix_view
 from .features.audiobook_shelf import views as audiobook_shelf
+from .features.queue_panel.views import playback_queue
 
 urlpatterns = [
     path('', views.index, name='index'),
@@ -31,6 +32,7 @@ urlpatterns = [
     path('repeat/', playback_modes.repeat, name='repeat'),
     path('volume/', playback_modes.volume, name='volume'),
     path('queue/', views.queue_track, name='queue'),
+    path('playback-queue/', playback_queue, name='playback_queue'),
     path('play-track/', views.play_track, name='play_track'),
     path('track-actions/', include('player.features.track_actions.urls')),
     path('playlists/', views.playlists, name='playlists'),
