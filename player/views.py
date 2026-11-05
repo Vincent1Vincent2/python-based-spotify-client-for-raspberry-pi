@@ -11,6 +11,7 @@ from .spotify_api import (
     get_active_account, fetch_spotify_profile, link_or_update_account,
 )
 from .account_menu import account_menu_state
+from .features.playback_errors.message import playback_error_message
 from .feel import FeelError, FeelScopeError
 from .feel_radio import advance_feel_radio, feel_status, start_feel_radio, stop_feel_radio
 from .features.listening_stats.stats import (
@@ -587,6 +588,22 @@ def select_web_player(request):
     return JsonResponse({'status': 'selected', 'device': 'web_player', 'resumed': resumed, 'message': message})
 
 
+def _playback_command_error(response):
+    """JSON the player can show when a Spotify transport call fails."""
+    body = {}
+    try:
+        parsed = response.json()
+    except Exception:
+        parsed = None
+    if isinstance(parsed, dict):
+        body = parsed
+    text = playback_error_message(body) or f"Spotify API error: {response.status_code}"
+    payload = {"error": text, "code": "playback_error"}
+    if body.get("code") in ("needs_scope", "token_expired"):
+        payload["code"] = body["code"]
+    return JsonResponse(payload, status=502)
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def play(request):
@@ -638,10 +655,7 @@ def play(request):
                 }, status=409)
         
         if response.status_code >= 400:
-            return JsonResponse({
-                'error': f'Spotify API error: {response.status_code}',
-                'code': 'playback_error',
-            }, status=502)
+            return _playback_command_error(response)
         
         return JsonResponse({'status': 'playing', 'device_id': device_id})
     except Exception as e:
@@ -662,7 +676,9 @@ def pause(request):
     
     try:
         device_id = request.session.get('selected_device_id')
-        sp.pause_playback(device_id=device_id if device_id else None)
+        response = sp.pause_playback(device_id=device_id if device_id else None)
+        if response.status_code >= 400:
+            return _playback_command_error(response)
         return JsonResponse({'status': 'paused'})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
@@ -682,7 +698,9 @@ def next_track(request):
     
     try:
         device_id = request.session.get('selected_device_id')
-        sp.next_track(device_id=device_id if device_id else None)
+        response = sp.next_track(device_id=device_id if device_id else None)
+        if response.status_code >= 400:
+            return _playback_command_error(response)
         return JsonResponse({'status': 'next'})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
@@ -702,7 +720,9 @@ def previous_track(request):
     
     try:
         device_id = request.session.get('selected_device_id')
-        sp.previous_track(device_id=device_id if device_id else None)
+        response = sp.previous_track(device_id=device_id if device_id else None)
+        if response.status_code >= 400:
+            return _playback_command_error(response)
         return JsonResponse({'status': 'previous'})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
