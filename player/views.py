@@ -807,6 +807,40 @@ def play_track(request):
         return JsonResponse({'error': str(e)}, status=400)
 
 
+def first_playlist_image(playlist):
+    """First cover URL already on a Spotify playlist object.
+
+    GET /me/playlists includes images, so a card does not need another
+    request per playlist.
+    """
+    images = playlist.get('images') or []
+    if not images:
+        return None
+    first = images[0] or {}
+    if isinstance(first, str):
+        return first or None
+    if isinstance(first, dict):
+        return first.get('url') or None
+    return None
+
+
+def build_playlist_json(playlist):
+    """JSON for one playlist card from a single playlist list item."""
+    owner = playlist.get('owner') or {}
+    tracks = playlist.get('tracks') or {}
+    total = tracks.get('total')
+    return {
+        'id': playlist.get('id'),
+        'name': playlist.get('name') or '',
+        'description': playlist.get('description') or '',
+        'image': first_playlist_image(playlist),
+        'tracks_count': total if isinstance(total, int) else 0,
+        'owner': owner.get('display_name') or owner.get('id') or '',
+        'public': playlist.get('public', False),
+        'collaborative': playlist.get('collaborative', False),
+    }
+
+
 def playlists(request):
     """Get user's playlists with pagination."""
     sp = get_spotify_client(request)
@@ -823,16 +857,9 @@ def playlists(request):
         results = response.json()
         
         for playlist in results['items']:
-            playlists_list.append({
-                'id': playlist['id'],
-                'name': playlist['name'],
-                'description': playlist.get('description', ''),
-                'image': playlist['images'][0]['url'] if playlist['images'] else None,
-                'tracks_count': playlist['tracks']['total'],
-                'owner': playlist['owner']['display_name'] or playlist['owner']['id'],
-                'public': playlist.get('public', False),
-                'collaborative': playlist.get('collaborative', False),
-            })
+            if not playlist:
+                continue
+            playlists_list.append(build_playlist_json(playlist))
         
         # Check if there are more playlists
         has_more = results['next'] is not None

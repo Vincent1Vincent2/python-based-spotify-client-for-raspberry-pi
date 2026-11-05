@@ -1,0 +1,130 @@
+/* Playlist cover cards. Overrides the 180px grid in player.css.
+   Phones get two columns, and three once the screen is a bit wider.
+   Wider screens get four. */
+
+@media (max-width: 759px) {
+    #content-playlists.tab-content {
+        padding: 16px 8px 20px;
+    }
+
+    .playlists-header .sort-btn {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+    }
+}
+
+.playlists-header {
+    flex-wrap: wrap;
+    gap: 10px 12px;
+}
+
+.playlists-header .sort-controls {
+    flex-wrap: wrap;
+}
+
+#playlistsGrid.playlists-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+}
+
+@media (min-width: 380px) {
+    #playlistsGrid.playlists-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 760px) {
+    #playlistsGrid.playlists-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+.playlist-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    min-width: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--transition);
+    overflow: hidden;
+}
+
+.playlist-card:hover,
+.playlist-card:focus-visible {
+    background: var(--color-text);
+    outline: none;
+}
+
+.playlist-card-cover {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    background: var(--color-gray-light);
+    border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.playlist-card-image,
+.playlist-card-fallback {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.playlist-card-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.playlist-card-name {
+    display: -webkit-box;
+    min-height: 2.5em;
+    margin: 8px 8px 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--color-text);
+}
+
+.playlist-card-count {
+    margin: 2px 8px 8px;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    color: var(--color-gray);
+}
+
+.playlist-card:hover .playlist-card-name,
+.playlist-card:focus-visible .playlist-card-name,
+.playlist-card:hover .playlist-card-count,
+.playlist-card:focus-visible .playlist-card-count {
+    color: var(--color-bg);
+}
+
+.playlist-card-empty {
+    grid-column: 1 / -1;
+    padding: 20px;
+    text-align: center;
+    opacity: 0.7;
+}
