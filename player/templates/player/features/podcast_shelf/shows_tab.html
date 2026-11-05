@@ -1,0 +1,387 @@
+                    <button class="tab-button" type="button" onclick="openShowsTab()" id="tab-shows">Shows</button>
+                    <div class="tab-content" id="content-shows">
+                        <div id="showsMessage"></div>
+                        <div id="showsListView">
+                            <div class="section-header">
+                                <h3>Shows</h3>
+                            </div>
+                            <p class="shows-note">
+                                Shows saved in your Spotify library. Paste a show link to add one,
+                                then open a show to play an episode.
+                            </p>
+                            <form id="showsSaveForm" onsubmit="return saveShowFromInput(event);">
+                                <div class="search-box">
+                                    <input class="search-input" id="showSaveInput" type="text"
+                                        placeholder="Paste a Spotify show link" autocomplete="off" spellcheck="false">
+                                    <button class="btn" type="submit">Save</button>
+                                </div>
+                            </form>
+                            <div class="albums-grid" id="showsGrid">
+                                <div style="text-align: center; padding: 20px; opacity: 0.7;">Open this tab to load your shows.</div>
+                            </div>
+                            <div style="text-align: center; margin-top: 20px;">
+                                <button class="btn" id="loadMoreShows" type="button" onclick="loadShows(false)"
+                                    style="display: none;">Load More</button>
+                            </div>
+                        </div>
+                        <div id="showDetailView" style="display: none;">
+                            <button class="back-button" type="button" onclick="closeShowDetail()">← Back to Shows</button>
+                            <div id="showDetailHeader"></div>
+                            <div class="tracks-list" id="showEpisodes"></div>
+                            <div style="text-align: center; margin-top: 20px;">
+                                <button class="btn" id="loadMoreEpisodes" type="button" onclick="loadEpisodes(false)"
+                                    style="display: none;">Load More</button>
+                            </div>
+                        </div>
+                        <script>
+                            var showsOffset = 0;
+                            var showsRequest = 0;
+                            var episodesOffset = 0;
+                            var episodesRequest = 0;
+                            var currentShowId = '';
+
+                            function podcastEscape(value) {
+                                return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+                                    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
+                                });
+                            }
+
+                            function formatClock(ms) {
+                                var total = Math.floor(Number(ms) / 1000);
+                                if (!isFinite(total) || total < 0) total = 0;
+                                var hours = Math.floor(total / 3600);
+                                var minutes = Math.floor((total % 3600) / 60);
+                                var seconds = total % 60;
+                                var pad = function (number) { return (number < 10 ? '0' : '') + number; };
+                                if (hours) return hours + ':' + pad(minutes) + ':' + pad(seconds);
+                                return minutes + ':' + pad(seconds);
+                            }
+
+                            function episodeCountLabel(count) {
+                                var number = Math.floor(Number(count));
+                                if (!isFinite(number) || number < 0) number = 0;
+                                return number === 1 ? '1 episode' : number + ' episodes';
+                            }
+
+                            function readJson(response) {
+                                return response.text().then(function (text) {
+                                    var data = {};
+                                    if (text) {
+                                        try {
+                                            data = JSON.parse(text);
+                                        } catch (error) {
+                                            data = { error: 'Could not read the response.' };
+                                        }
+                                    }
+                                    return { ok: response.ok, status: response.status, data: data };
+                                });
+                            }
+
+                            function setShowsMessage(html) {
+                                var box = document.getElementById('showsMessage');
+                                if (box) box.innerHTML = html || '';
+                            }
+
+                            function showsScopeHtml(data) {
+                                var message = podcastEscape((data && data.error) || 'Reconnect Spotify to use your shows.');
+                                return '<div class="shows-message">' + message +
+                                    ' <a href="/login/?auth=1">Reconnect Spotify</a></div>';
+                            }
+
+                            function showImage(url, name, className) {
+                                if (!url) return '<div class="' + className + '"></div>';
+                                return '<img class="' + className + '" src="' + podcastEscape(url) +
+                                    '" alt="' + podcastEscape(name || 'Show') + '">';
+                            }
+
+                            function showMeta(show) {
+                                var parts = [];
+                                if (show.publisher) parts.push(show.publisher);
+                                if (show.explicit) parts.push('Explicit');
+                                parts.push(episodeCountLabel(show.total_episodes));
+                                return parts.map(podcastEscape).join(' · ');
+                            }
+
+                            function renderShowCard(show) {
+                                return '<div class="album-item" data-show-id="' + podcastEscape(show.id) + '">' +
+                                    showImage(show.image, show.name, 'album-image') +
+                                    '<div class="album-name">' + podcastEscape(show.name) + '</div>' +
+                                    '<div class="album-info">' + showMeta(show) + '</div>' +
+                                    '</div>';
+                            }
+
+                            function renderShowHeader(show) {
+                                var description = show.description
+                                    ? '<p class="show-description">' + podcastEscape(show.description) + '</p>'
+                                    : '';
+                                return '<div class="playlist-detail-header">' +
+                                    showImage(show.image, show.name, 'playlist-detail-image') +
+                                    '<div class="playlist-detail-info">' +
+                                    '<h2 class="show-title">' + podcastEscape(show.name) + '</h2>' +
+                                    '<p>' + showMeta(show) + '</p>' +
+                                    description +
+                                    '<div class="playlist-detail-actions">' +
+                                    '<button class="btn" type="button" onclick="removeCurrentShow()">Remove from library</button>' +
+                                    '</div></div></div>';
+                            }
+
+                            function episodeMeta(episode) {
+                                var parts = [];
+                                if (episode.release_date) parts.push(episode.release_date);
+                                if (episode.duration_ms) parts.push(formatClock(episode.duration_ms));
+                                if (episode.explicit) parts.push('Explicit');
+                                if (episode.resume_position_ms > 0) {
+                                    parts.push('Last spot ' + formatClock(episode.resume_position_ms));
+                                }
+                                return parts.map(podcastEscape).join(' · ');
+                            }
+
+                            function renderEpisode(episode) {
+                                var description = episode.description
+                                    ? '<div class="episode-description">' + podcastEscape(episode.description) + '</div>'
+                                    : '';
+                                return '<div class="track-item" data-episode-id="' + podcastEscape(episode.id) + '">' +
+                                    showImage(episode.image, episode.name, 'track-image') +
+                                    '<div class="track-info">' +
+                                    '<div class="track-name">' + podcastEscape(episode.name) + '</div>' +
+                                    '<div class="track-artist">' + episodeMeta(episode) + '</div>' +
+                                    description +
+                                    '</div></div>';
+                            }
+
+                            function closeShowDetail() {
+                                currentShowId = '';
+                                var detail = document.getElementById('showDetailView');
+                                var list = document.getElementById('showsListView');
+                                if (detail) detail.style.display = 'none';
+                                if (list) list.style.display = '';
+                            }
+
+                            function openShowsTab() {
+                                setShowsMessage('');
+                                if (typeof switchTab === 'function') switchTab('shows');
+                                loadShows(true);
+                            }
+
+                            function loadShows(reset) {
+                                var grid = document.getElementById('showsGrid');
+                                var more = document.getElementById('loadMoreShows');
+                                if (!grid) return;
+                                if (reset) {
+                                    showsOffset = 0;
+                                    closeShowDetail();
+                                    grid.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">Loading shows...</div>';
+                                }
+                                if (more) more.disabled = true;
+                                var requestId = ++showsRequest;
+                                var offset = showsOffset;
+                                fetch('/shows/?offset=' + offset)
+                                    .then(readJson)
+                                    .then(function (result) {
+                                        if (requestId !== showsRequest) return;
+                                        var data = result.data || {};
+                                        if (more) more.disabled = false;
+                                        if (data.code === 'needs_scope') {
+                                            grid.innerHTML = showsScopeHtml(data);
+                                            if (more) more.style.display = 'none';
+                                            return;
+                                        }
+                                        if (!result.ok || data.error) {
+                                            var message = podcastEscape(data.error || 'Could not load shows.');
+                                            if (reset || offset === 0) {
+                                                grid.innerHTML = '<div style="text-align: center; padding: 20px;">' + message + '</div>';
+                                            } else {
+                                                setShowsMessage('<div class="shows-message">' + message + '</div>');
+                                            }
+                                            return;
+                                        }
+                                        var cards = (data.shows || []).map(renderShowCard).join('');
+                                        if (!cards) {
+                                            cards = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No saved shows yet.</div>';
+                                        }
+                                        if (reset || offset === 0) grid.innerHTML = cards;
+                                        else grid.insertAdjacentHTML('beforeend', cards);
+                                        if (data.has_more) showsOffset = (Number(data.offset) || 0) + (Number(data.limit) || 50);
+                                        if (more) more.style.display = data.has_more ? '' : 'none';
+                                    })
+                                    .catch(function () {
+                                        if (requestId !== showsRequest) return;
+                                        if (more) more.disabled = false;
+                                        grid.innerHTML = '<div style="text-align: center; padding: 20px;">Could not load shows.</div>';
+                                    });
+                            }
+
+                            function openShow(showId) {
+                                if (!showId) return;
+                                currentShowId = showId;
+                                episodesOffset = 0;
+                                var list = document.getElementById('showsListView');
+                                var detail = document.getElementById('showDetailView');
+                                var header = document.getElementById('showDetailHeader');
+                                var episodes = document.getElementById('showEpisodes');
+                                var more = document.getElementById('loadMoreEpisodes');
+                                if (list) list.style.display = 'none';
+                                if (detail) detail.style.display = 'block';
+                                if (header) header.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">Loading show...</div>';
+                                if (episodes) episodes.innerHTML = '';
+                                if (more) more.style.display = 'none';
+                                setShowsMessage('');
+                                loadEpisodes(true);
+                            }
+
+                            function loadEpisodes(reset) {
+                                if (!currentShowId) return;
+                                var more = document.getElementById('loadMoreEpisodes');
+                                if (reset) episodesOffset = 0;
+                                if (more) more.disabled = true;
+                                var requestId = ++episodesRequest;
+                                var offset = episodesOffset;
+                                var showId = currentShowId;
+                                fetch('/shows/detail/?id=' + encodeURIComponent(showId) + '&offset=' + offset)
+                                    .then(readJson)
+                                    .then(function (result) {
+                                        if (requestId !== episodesRequest || showId !== currentShowId) return;
+                                        var data = result.data || {};
+                                        if (more) more.disabled = false;
+                                        var header = document.getElementById('showDetailHeader');
+                                        var episodes = document.getElementById('showEpisodes');
+                                        if (data.code === 'needs_scope') {
+                                            if (header) header.innerHTML = showsScopeHtml(data);
+                                            if (episodes) episodes.innerHTML = '';
+                                            if (more) more.style.display = 'none';
+                                            return;
+                                        }
+                                        if (!result.ok || data.error) {
+                                            var message = podcastEscape(data.error || 'Could not load that show.');
+                                            if (header && (reset || offset === 0)) {
+                                                header.innerHTML = '<div style="text-align: center; padding: 20px;">' + message + '</div>';
+                                            } else {
+                                                setShowsMessage('<div class="shows-message">' + message + '</div>');
+                                            }
+                                            return;
+                                        }
+                                        if (header && (reset || offset === 0) && data.show) {
+                                            header.innerHTML = renderShowHeader(data.show);
+                                        }
+                                        var rows = (data.episodes || []).map(renderEpisode).join('');
+                                        if (!rows && (reset || offset === 0)) {
+                                            rows = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No episodes yet.</div>';
+                                        }
+                                        if (episodes) {
+                                            if (reset || offset === 0) episodes.innerHTML = rows;
+                                            else if (rows) episodes.insertAdjacentHTML('beforeend', rows);
+                                        }
+                                        if (data.has_more) episodesOffset = (Number(data.offset) || 0) + (Number(data.limit) || 50);
+                                        if (more) more.style.display = data.has_more ? '' : 'none';
+                                    })
+                                    .catch(function () {
+                                        if (requestId !== episodesRequest) return;
+                                        if (more) more.disabled = false;
+                                        setShowsMessage('<div class="shows-message">Could not load that show.</div>');
+                                    });
+                            }
+
+                            function postShowJson(url, payload, onOk) {
+                                setShowsMessage('');
+                                fetch(url, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(payload || {})
+                                })
+                                    .then(readJson)
+                                    .then(function (result) {
+                                        var data = result.data || {};
+                                        if (data.code === 'needs_scope') {
+                                            setShowsMessage(showsScopeHtml(data));
+                                            return;
+                                        }
+                                        if (!result.ok || data.error) {
+                                            setShowsMessage('<div class="shows-message">' +
+                                                podcastEscape(data.error || 'Spotify did not accept that.') + '</div>');
+                                            return;
+                                        }
+                                        if (onOk) onOk(data);
+                                    })
+                                    .catch(function () {
+                                        setShowsMessage('<div class="shows-message">Spotify did not accept that.</div>');
+                                    });
+                            }
+
+                            function saveShowFromInput(event) {
+                                if (event) event.preventDefault();
+                                var input = document.getElementById('showSaveInput');
+                                var value = input ? input.value.trim() : '';
+                                if (!value) {
+                                    setShowsMessage('<div class="shows-message">Paste a Spotify show link.</div>');
+                                    return false;
+                                }
+                                postShowJson('/shows/save/', { show: value }, function () {
+                                    if (input) input.value = '';
+                                    setShowsMessage('<div class="shows-message">Saved to your shows.</div>');
+                                    loadShows(true);
+                                });
+                                return false;
+                            }
+
+                            function removeCurrentShow() {
+                                if (!currentShowId) return;
+                                var showId = currentShowId;
+                                postShowJson('/shows/remove/', { id: showId }, function () {
+                                    closeShowDetail();
+                                    setShowsMessage('<div class="shows-message">Removed from your shows.</div>');
+                                    loadShows(true);
+                                });
+                            }
+
+                            function playEpisode(episodeId) {
+                                if (!episodeId) return;
+                                var params = new URLSearchParams();
+                                params.set('id', episodeId);
+                                try {
+                                    if (typeof useWebPlayer !== 'undefined' && useWebPlayer &&
+                                        typeof deviceId !== 'undefined' && deviceId) {
+                                        params.set('device_id', deviceId);
+                                    }
+                                } catch (error) {}
+                                setShowsMessage('');
+                                fetch('/shows/play-episode/?' + params.toString(), { method: 'POST' })
+                                    .then(readJson)
+                                    .then(function (result) {
+                                        var data = result.data || {};
+                                        if (data.code === 'needs_scope') {
+                                            setShowsMessage(showsScopeHtml(data));
+                                            return;
+                                        }
+                                        if (!result.ok || data.error) {
+                                            setShowsMessage('<div class="shows-message">' +
+                                                podcastEscape(data.error || 'Could not play that episode.') + '</div>');
+                                            return;
+                                        }
+                                        setShowsMessage('<div class="shows-message">Playing episode.</div>');
+                                    })
+                                    .catch(function () {
+                                        setShowsMessage('<div class="shows-message">Could not play that episode.</div>');
+                                    });
+                            }
+
+                            document.addEventListener('click', function (event) {
+                                var card = event.target.closest && event.target.closest('[data-show-id]');
+                                if (card && card.closest('#showsGrid')) {
+                                    openShow(card.getAttribute('data-show-id'));
+                                    return;
+                                }
+                                var episode = event.target.closest && event.target.closest('[data-episode-id]');
+                                if (episode && episode.closest('#showEpisodes')) {
+                                    playEpisode(episode.getAttribute('data-episode-id'));
+                                }
+                            });
+
+                            (function () {
+                                var content = document.getElementById('content-shows');
+                                if (!content || !content.parentElement || !content.parentElement.classList) return;
+                                if (!content.parentElement.classList.contains('tabs-nav')) return;
+                                var container = content.parentElement.parentElement;
+                                if (container) container.appendChild(content);
+                            })();
+                        </script>
+                    </div>

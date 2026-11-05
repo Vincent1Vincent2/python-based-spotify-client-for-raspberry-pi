@@ -1373,6 +1373,9 @@ body {
     color: var(--color-gray);
 }
 .books-error:not(:empty) {
+
+.shows-note,
+.shows-message {
     margin: 0 0 16px;
     line-height: 1.45;
 }
@@ -1508,3 +1511,24 @@ body {
         width: min(100%, 280px);
     }
 }
+.shows-message a {
+    color: inherit;
+}
+
+.show-title {
+    overflow-wrap: anywhere;
+}
+
+.show-description {
+    max-height: 6em;
+    overflow: auto;
+    margin-top: 8px;
+}
+
+.episode-description {
+    margin-top: 4px;
+    font-size: 0.8rem;
+    max-height: 2.8em;
+    overflow: hidden;
+}
+    

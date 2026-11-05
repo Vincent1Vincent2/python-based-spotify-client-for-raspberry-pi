@@ -1,6 +1,7 @@
 """
 Custom Spotify API client - handles authentication and API requests directly.
 """
+import re
 import requests
 import time
 import logging
@@ -8,6 +9,29 @@ from django.conf import settings
 from urllib.parse import urlencode
 
 logger = logging.getLogger(__name__)
+
+# One Spotify id. Commas and query strings are rejected so a lookup cannot
+# become a batch request.
+_SPOTIFY_ID = re.compile(r'^[A-Za-z0-9]{1,64}$')
+
+
+def _require_spotify_id(value):
+    text = str(value or '').strip()
+    if not _SPOTIFY_ID.fullmatch(text):
+        raise ValueError('Invalid Spotify id')
+    return text
+
+
+def _page_params(limit, offset):
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        offset = int(offset)
+    except (TypeError, ValueError):
+        offset = 0
+    return {'limit': min(50, max(1, limit)), 'offset': max(0, offset)}
 
 
 class SpotifyAPI:
@@ -455,6 +479,32 @@ class SpotifyAPI:
         if isinstance(uris, (list, tuple)):
             uris = ','.join(uris)
         return self.delete('me/library', params={'uris': uris})
+    def get_saved_shows(self, limit=50, offset=0):
+        """Saved podcasts. One GET /me/shows page."""
+        return self.get('me/shows', params=_page_params(limit, offset))
+
+    def get_show(self, show_id):
+        """One show. GET /shows/{id}."""
+        show_id = _require_spotify_id(show_id)
+        return self.get(f'shows/{show_id}')
+
+    def get_show_episodes(self, show_id, limit=50, offset=0):
+        """Episodes for one show. GET /shows/{id}/episodes."""
+        show_id = _require_spotify_id(show_id)
+        return self.get(
+            f'shows/{show_id}/episodes',
+            params=_page_params(limit, offset),
+        )
+
+    def save_show(self, show_id):
+        """Save one show. PUT /me/library?uris=spotify:show:{id}."""
+        show_id = _require_spotify_id(show_id)
+        return self.put('me/library', params={'uris': f'spotify:show:{show_id}'})
+
+    def remove_show(self, show_id):
+        """Remove one show. DELETE /me/library?uris=spotify:show:{id}."""
+        show_id = _require_spotify_id(show_id)
+        return self.delete('me/library', params={'uris': f'spotify:show:{show_id}'})
     
     def get_categories(self, limit=50, offset=0):
         """

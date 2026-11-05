@@ -123,13 +123,8 @@ def login_view(request):
     Already-linked accounts can be reactivated without OAuth. auth=1
     always starts authorization, including when a session is already
     active, so a missing scope can be granted and another account
-    always starts authorization, including when a session already
-    exists, so a missing scope can be granted and another account
     can be linked.
     """
-    # auth=1 starts Spotify's link flow even when a kiosk session is
-    # already active. The header "Add account" item uses this URL, so
-    # it has to run before the "already logged in" redirect.
     if request.GET.get('auth') == '1':
         api = SpotifyAPI()
         auth_url = api.get_authorization_url(SPOTIFY_SCOPE)
