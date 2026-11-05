@@ -1,0 +1,63 @@
+{% load static sleep_timer %}
+{% sleep_timer_options as options %}
+<style>
+    .sleep-timer {
+        margin: 0 0 10px;
+        text-align: center;
+    }
+
+    .sleep-timer h3 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0 0 12px;
+    }
+
+    .sleep-timer-options {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+    }
+
+    .sleep-timer-choice {
+        background: var(--color-bg);
+        border: var(--border-width) solid var(--color-border);
+        color: var(--color-text);
+        padding: 12px 16px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+    .sleep-timer-choice.is-on,
+    .sleep-timer-choice:hover {
+        background: var(--color-text);
+        color: var(--color-bg);
+    }
+
+    .sleep-timer-remaining {
+        margin: 12px 0 0;
+        min-height: 1.2em;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .sleep-timer-cancel {
+        margin-top: 10px;
+        padding: 10px 18px;
+    }
+</style>
+<section id="sleep-timer" class="sleep-timer" aria-labelledby="sleep-timer-label">
+    <h3 id="sleep-timer-label">Sleep timer</h3>
+    <div class="sleep-timer-options">
+        {% for option in options %}
+            {% if option.kind == "end_of_track" %}
+                <button type="button" class="sleep-timer-choice" data-sleep-end="end" aria-pressed="false">{{ option.label }}</button>
+            {% else %}
+                <button type="button" class="sleep-timer-choice" data-sleep-minutes="{{ option.minutes }}" aria-pressed="false">{{ option.label }}</button>
+            {% endif %}
+        {% endfor %}
+    </div>
+    <p id="sleep-timer-remaining" class="sleep-timer-remaining" aria-live="polite" hidden></p>
+    <button type="button" id="sleep-timer-cancel" class="btn sleep-timer-cancel" hidden>Cancel</button>
+</section>
+<script src="{% static 'player/features/sleep_timer/sleep_timer.js' %}"></script>
