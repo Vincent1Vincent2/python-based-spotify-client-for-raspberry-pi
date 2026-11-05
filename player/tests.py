@@ -408,6 +408,10 @@ class FeelPageTests(TestCase):
         self.assertIn(">Hype</button>", body)
         self.assertIn(">Romantic</button>", body)
         self.assertIn("Keep going after the last song", body)
+        self.assertEqual(body.count("player/js/scope-banner.js"), 1)
+        self.assertIn("player/css/scope-banner.css", body)
+        self.assertIn("spotipiNoteAuth(data)", body)
+        self.assertIn('href="/login/?auth=1"', body)
 
         status = client.get("/feel/status/")
         self.assertEqual(status.status_code, 200)
