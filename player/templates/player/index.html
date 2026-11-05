@@ -88,6 +88,16 @@
             pointer-events: none;
         }
 
+        .controls {
+            flex-wrap: wrap;
+        }
+
+        .controls .btn-nudge {
+            min-width: 4.75rem;
+            padding-left: 16px;
+            padding-right: 16px;
+        }
+
         /* Three-dot "more actions" button, stacked above the track
            duration - opens a small menu with Play Now, Add to Queue,
            Save, Add to playlist, and Open album. */
@@ -199,6 +209,7 @@
 
             <div class="controls" style="flex-wrap: wrap;">
             <div class="controls">
+                <button class="btn btn-nudge" id="nudgeBackBtn" type="button" onclick="nudgeSeek(-15000)">−15s</button>
                 <button class="btn btn-previous" id="prevBtn" onclick="previousTrack()" disabled>⏮ Previous</button>
                 <button class="btn btn-play" id="playBtn" onclick="togglePlayback()" disabled>▶ Play</button>
                 <button class="btn btn-next" id="nextBtn" onclick="nextTrack()" disabled>⏭ Next</button>
@@ -206,6 +217,7 @@
                 <button class="btn" id="repeatBtn" onclick="cycleRepeat()" data-cycle="off context track" data-repeat="off" disabled>Repeat</button>
                 <span style="align-self: center;">Volume</span>
                 <input type="range" id="volumeRange" min="0" max="100" value="0" aria-label="Volume" oninput="volumeDragging = true" onchange="commitVolume(this.value)" disabled style="align-self: center;">
+                <button class="btn btn-nudge" id="nudgeForwardBtn" type="button" onclick="nudgeSeek(15000)">+15s</button>
             </div>
         </div>
 
@@ -571,8 +583,9 @@
         let activePlaybackDevice = null;
 
         // --- Scrub bar state ---
-        let progressDurationMs = 0;
-        let progressCurrentMs = 0;
+        // `var` so these stay real globals the ±15s buttons can read.
+        var progressDurationMs = 0;
+        var progressCurrentMs = 0;
         let isDraggingProgress = false;
         let progressTickInterval = null;
         let shuffleOn = false;
@@ -751,6 +764,29 @@
                 .catch(error => {
                     document.getElementById('statusIndicator').textContent = 'Error seeking: ' + error;
                 });
+        }
+
+        // Same clamp as player/features/seek_nudge/nudge.py. Reads the scrub
+        // bar globals only; if they are missing, the click does nothing.
+        function clampNudge(currentMs, durationMs, deltaMs) {
+            const duration = durationMs > 0 ? durationMs : 0;
+            let target = currentMs + deltaMs;
+            if (target < 0) {
+                target = 0;
+            }
+            if (target > duration) {
+                target = duration;
+            }
+            return target;
+        }
+
+        function nudgeSeek(deltaMs) {
+            if (typeof progressCurrentMs === 'undefined' || typeof progressDurationMs === 'undefined') {
+                return;
+            }
+            progressCurrentMs = clampNudge(progressCurrentMs, progressDurationMs, deltaMs);
+            renderProgressBar();
+            sendSeek(progressCurrentMs);
         }
 
         (function initProgressScrub() {
