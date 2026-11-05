@@ -449,6 +449,7 @@ def current_playback(request):
                     'artists': [artist.get('name', 'Unknown Artist') for artist in artists],
                     'album': album.get('name', 'Unknown Album'),
                     'album_uri': album.get('uri'),
+                    'album_id': album.get('id') or '',
                     'image': album_images[0]['url'] if album_images and len(album_images) > 0 else None,
                     'duration_ms': item.get('duration_ms', 0),
                     'progress_ms': progress_ms,
