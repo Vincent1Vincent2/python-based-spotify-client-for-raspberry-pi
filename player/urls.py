@@ -4,6 +4,7 @@ from player.features.search_browser.views import search_browser
 from .features.library_home import views as library_home
 from .features.playback_modes import views as playback_modes
 from .features.playlist_pins import pin_playlist, playlist_marks, tag_playlist
+from .features.smart_mixes.views import smart_mix_view
 
 urlpatterns = [
     path('', views.index, name='index'),
@@ -49,6 +50,7 @@ urlpatterns = [
     path('', include('player.features.recently_played.urls')),
     path('home/', library_home.home, name='library_home'),
     path('', include('player.features.library_hearts.urls')),
+    path('mix/', smart_mix_view, name='smart_mix'),
     path('settings/', views.settings_view, name='settings'),
     path('settings/audio/', views.update_audio_settings, name='update_audio_settings'),
     path('settings/reboot/', views.reboot_system, name='reboot_system'),

@@ -1025,6 +1025,11 @@ body {
 }
 
 .home-note {
+.mix-section {
+    margin-top: 0;
+}
+
+.mix-note {
     margin: 0 0 16px;
     line-height: 1.45;
 }
@@ -1037,6 +1042,32 @@ body {
     display: flex;
     gap: 12px;
     align-items: center;
+.mix-fields {
+    display: grid;
+    gap: 12px;
+    max-width: 520px;
+}
+
+.mix-fields label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.95rem;
+}
+
+.mix-fields .search-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.mix-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 16px 0;
+}
+
+.mix-track {
     padding: 8px 0;
     border-bottom: var(--border-width) solid var(--color-border);
 }
@@ -1064,3 +1095,8 @@ body {
     padding: 12px 0;
 }
     
+.mix-reads {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: var(--color-gray);
+}

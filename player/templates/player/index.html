@@ -242,6 +242,7 @@
                     <button class="tab-button" onclick="switchTab('recent')" id="tab-recent">Recent</button>
                     <button class="tab-button" onclick="switchTab('search-browser')" id="tab-search-browser">Search+</button>
                     <button class="tab-button" onclick="switchTab('home')" id="tab-home">Home</button>
+                    <button class="tab-button" onclick="switchTab('mix')" id="tab-mix">Mix</button>
                 </div>
 
                 <div class="tab-content active" id="content-playlists">
@@ -363,6 +364,35 @@
                         <div id="homeTracks">
                             <div class="home-empty">Recently played songs load when you open Home.</div>
                         </div>
+                <div class="tab-content" id="content-mix">
+                    <div class="mix-section" id="mixSection">
+                        <div class="section-header">
+                            <h3>Smart mix</h3>
+                        </div>
+                        <p class="mix-note">
+                            One read of your 50 most recently saved songs. Filter on this
+                            device by artist, title, and album year. Up to 30 matches are
+                            saved as a private playlist named Mix 01, Mix 02, and so on,
+                            then played. Leave year blank to ignore it. A year keeps songs
+                            released that year or later, and skips songs whose album has
+                            no release date.
+                        </p>
+                        <div class="mix-fields">
+                            <label for="mixArtist">Artist contains
+                                <input type="text" class="search-input" id="mixArtist" placeholder="Artist name" autocomplete="off">
+                            </label>
+                            <label for="mixTitle">Title contains
+                                <input type="text" class="search-input" id="mixTitle" placeholder="Song title" autocomplete="off">
+                            </label>
+                            <label for="mixYear">Year from
+                                <input type="number" class="search-input" id="mixYear" min="0" max="9999" inputmode="numeric" placeholder="1990">
+                            </label>
+                        </div>
+                        <div class="mix-actions">
+                            <button class="btn" id="mixStart" type="button" onclick="makeSmartMix()">Make mix</button>
+                        </div>
+                        <div id="mixStatus"></div>
+                        <div id="mixTracks"></div>
                     </div>
                 </div>
             </div>
@@ -2201,6 +2231,89 @@
                 .catch(function () {
                     feelAdvanceInFlight = false;
                     feelClaimedMarker = '';
+                });
+        }
+
+        let mixInFlight = false;
+
+        function finishMixRequest() {
+            mixInFlight = false;
+            const button = document.getElementById('mixStart');
+            if (button) button.disabled = false;
+        }
+
+        function mixErrorHtml(data) {
+            const message = escapeHtml((data && data.error) || 'Smart mix did not start.');
+            if (data && data.code === 'needs_scope') {
+                return message + ' <a href="/login/?auth=1">Reconnect Spotify</a>';
+            }
+            return message;
+        }
+
+        function renderSmartMix(data) {
+            const status = document.getElementById('mixStatus');
+            const list = document.getElementById('mixTracks');
+            if (!status || !data) return;
+            let text = '';
+            if (data.name) text += escapeHtml(data.name) + '. ';
+            if (data.message) text += escapeHtml(data.message);
+            status.innerHTML = text;
+            const reads = (data.reads || []).map(escapeHtml).join(', ');
+            if (reads) {
+                status.innerHTML += '<div class="mix-reads">Spotify reads: ' + reads + '</div>';
+            }
+            if (!list) return;
+            list.innerHTML = (data.tracks || []).map(function (track) {
+                const artists = (track.artists || []).join(', ');
+                const year = track.year ? ' · ' + track.year : '';
+                return '<div class="mix-track"><strong>' + escapeHtml(track.name) + '</strong> · '
+                    + escapeHtml(artists) + escapeHtml(year) + '</div>';
+            }).join('');
+        }
+
+        function makeSmartMix() {
+            const status = document.getElementById('mixStatus');
+            const list = document.getElementById('mixTracks');
+            const button = document.getElementById('mixStart');
+            if (!status || mixInFlight) return;
+            const yearText = (document.getElementById('mixYear').value || '').trim();
+            const body = {
+                artist: document.getElementById('mixArtist').value,
+                title: document.getElementById('mixTitle').value,
+                device_id: useWebPlayer ? (deviceId || null) : null,
+            };
+            if (yearText) {
+                if (!/^\d{1,4}$/.test(yearText)) {
+                    status.textContent = 'Year from must be a number.';
+                    return;
+                }
+                body.year_from = Number(yearText);
+            }
+            mixInFlight = true;
+            if (button) button.disabled = true;
+            status.textContent = 'Reading your saved songs...';
+            if (list) list.innerHTML = '';
+            fetch('/mix/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            })
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    finishMixRequest();
+                    if (!result.ok || result.data.error) {
+                        status.innerHTML = mixErrorHtml(result.data);
+                        return;
+                    }
+                    renderSmartMix(result.data);
+                })
+                .catch(function () {
+                    finishMixRequest();
+                    status.textContent = 'Smart mix did not start.';
                 });
         }
 
