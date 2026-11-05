@@ -10,6 +10,7 @@ from .spotify_api import (
     SpotifyAPI, get_spotify_api, capture_playback_snapshot, transfer_with_resume,
     get_active_account, fetch_spotify_profile, link_or_update_account,
 )
+from .account_menu import account_menu_state
 from .feel import FeelError, FeelScopeError
 from .feel_radio import advance_feel_radio, feel_status, start_feel_radio, stop_feel_radio
 from .features.listening_stats.stats import (
@@ -46,6 +47,7 @@ def index(request):
     
     accounts = list(SpotifyAccount.objects.all())
     active_account = get_active_account(request)
+    account_menu = account_menu_state(accounts, active_account)
     
     try:
         access_token = sp.access_token
@@ -96,6 +98,7 @@ def index(request):
             'use_web_player': use_web_player,
             'accounts': accounts,
             'active_account': active_account,
+            'account_menu': account_menu,
         }
     except Exception as e:
         context = {
@@ -107,6 +110,7 @@ def index(request):
             'use_web_player': True,
             'accounts': accounts,
             'active_account': active_account,
+            'account_menu': account_menu,
         }
     
     return render(request, 'player/index.html', context)
@@ -123,6 +127,9 @@ def login_view(request):
     exists, so a missing scope can be granted and another account
     can be linked.
     """
+    # auth=1 starts Spotify's link flow even when a kiosk session is
+    # already active. The header "Add account" item uses this URL, so
+    # it has to run before the "already logged in" redirect.
     if request.GET.get('auth') == '1':
         api = SpotifyAPI()
         auth_url = api.get_authorization_url(SPOTIFY_SCOPE)

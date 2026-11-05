@@ -4,6 +4,8 @@ from unittest.mock import patch
 from urllib.parse import urlencode
 from django.test import Client, TestCase
 
+from player.account_menu import account_menu_state
+
 from player.feel import (
     BATCH_SIZE,
     QUERY_CHAR_LIMIT,
@@ -908,3 +910,131 @@ class DiscoverTests(TestCase):
         self.assertIn("track.artists.join", template)
         self.assertIn("item.artists.join", template)
         self.assertIn("track.duration_ms", template)
+
+
+class AccountMenuStateTests(TestCase):
+    def test_marks_the_active_account_and_falls_back_when_the_name_is_blank(self):
+        from types import SimpleNamespace
+
+        ada = SimpleNamespace(
+            id=1,
+            display_name="Ada",
+            avatar_url="https://i.scdn.co/image/ada",
+            spotify_user_id="ada",
+            access_token="secret-access",
+            refresh_token="secret-refresh",
+        )
+        ben = SimpleNamespace(
+            id=2,
+            display_name="   ",
+            avatar_url="",
+            spotify_user_id="ben-id",
+            access_token="secret-access",
+            refresh_token="secret-refresh",
+        )
+
+        state = account_menu_state([ada, ben], ben)
+
+        self.assertEqual(state["label"], "ben-id")
+        self.assertEqual(state["initial"], "B")
+        self.assertTrue(state["active"])
+        self.assertEqual(
+            [row["label"] for row in state["rows"]],
+            ["Ada", "ben-id"],
+        )
+        self.assertFalse(state["rows"][0]["active"])
+        self.assertTrue(state["rows"][1]["active"])
+        self.assertEqual(state["rows"][0]["avatar_url"], "https://i.scdn.co/image/ada")
+        self.assertEqual(state["rows"][1]["initial"], "B")
+        blob = json.dumps(state)
+        self.assertNotIn("secret-access", blob)
+        self.assertNotIn("secret-refresh", blob)
+        self.assertEqual(
+            set(state["rows"][0]),
+            {"id", "label", "avatar_url", "initial", "active"},
+        )
+
+    def test_label_is_account_when_nothing_is_active(self):
+        state = account_menu_state([], None)
+        self.assertEqual(state["label"], "Account")
+        self.assertEqual(state["initial"], "A")
+        self.assertFalse(state["active"])
+        self.assertEqual(state["rows"], [])
+
+
+class AccountMenuPageTests(TestCase):
+    def _account(self, user_id, name, avatar_url=""):
+        import time
+
+        return SpotifyAccount.objects.create(
+            spotify_user_id=user_id,
+            display_name=name,
+            avatar_url=avatar_url,
+            access_token="access",
+            refresh_token="refresh",
+            token_expires_at=time.time() + 3600,
+        )
+
+    def test_header_includes_the_account_menu_once(self):
+        from django.conf import settings
+
+        source = (settings.BASE_DIR / "player/templates/player/index.html").read_text()
+        self.assertEqual(source.count('{% include "player/_account_menu.html" %}'), 1)
+        header = source.split('<div class="header">', 1)[1].split("</div>", 1)[0]
+        self.assertIn('{% include "player/_account_menu.html" %}', header)
+
+    def test_player_page_renders_linked_accounts_and_the_add_link(self):
+        from unittest.mock import patch
+
+        ada = self._account("ada", "Ada", "https://i.scdn.co/image/ada")
+        ben = self._account("ben", "Ben")
+        client = Client()
+        session = client.session
+        session["active_account_id"] = ben.id
+        session["use_web_player"] = True
+        session.save()
+
+        with patch("player.spotify_api.SpotifyAPI.get_devices", return_value=FakeResponse({"devices": []})), \
+                patch("player.spotify_api.SpotifyAPI.get_current_playback", return_value=FakeResponse({}, status=204)):
+            page = client.get("/")
+
+        self.assertEqual(page.status_code, 200)
+        body = page.content.decode()
+        header = body.split('<div class="header">', 1)[1].split('<div class="player-card">', 1)[0]
+        self.assertEqual(header.count('id="accountMenu"'), 1)
+        self.assertIn("player/js/account-menu.js", header)
+        self.assertEqual(body.count("player/js/account-menu.js"), 1)
+        self.assertIn('class="account-menu-label">Ben</span>', header)
+        self.assertIn('class="account-menu-add" href="/login/?auth=1"', header)
+        self.assertIn(">Add account</a>", header)
+        self.assertIn(f'data-account-id="{ada.id}"', header)
+        self.assertIn(f'data-account-id="{ben.id}" aria-current="true"', header)
+        self.assertNotIn(f'data-account-id="{ada.id}" aria-current="true"', header)
+        self.assertEqual(header.count("account-menu-badge"), 1)
+        self.assertIn("https://i.scdn.co/image/ada", header)
+        menu = header.split('id="accountMenu"', 1)[1]
+        self.assertNotIn("refresh_token", menu)
+        self.assertNotIn(ada.access_token, menu)
+
+    def test_add_account_starts_oauth_while_a_session_is_active(self):
+        from urllib.parse import parse_qs, urlparse
+
+        from player.views import SPOTIFY_SCOPE
+
+        account = self._account("ada", "Ada")
+        client = Client()
+        session = client.session
+        session["active_account_id"] = account.id
+        session.save()
+
+        stayed = client.get("/login/")
+        self.assertRedirects(stayed, "/", fetch_redirect_response=False)
+
+        linking = client.get("/login/?auth=1")
+        self.assertEqual(linking.status_code, 302)
+        location = linking["Location"]
+        parsed = urlparse(location)
+        self.assertEqual(parsed.scheme, "https")
+        self.assertEqual(parsed.netloc, "accounts.spotify.com")
+        self.assertEqual(parsed.path, "/authorize")
+        self.assertEqual(parse_qs(parsed.query)["scope"][0], SPOTIFY_SCOPE)
