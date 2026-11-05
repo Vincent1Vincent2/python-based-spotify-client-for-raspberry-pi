@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="{% static 'player/css/playlist-cards.css' %}">
     <link rel="stylesheet" href="{% static 'player/css/connect.css' %}">
     <link rel="stylesheet" href="{% static 'player/css/stage.css' %}">
+    <link rel="stylesheet" href="{% static 'player/css/sticky-player.css' %}">
     <style>
         /* Scrub bar - scoped here rather than player.css so this
            feature stays self-contained; can be moved into player.css
@@ -171,6 +172,7 @@
 
         <div class="player-card shell">
             <div class="stage-column">
+        <div class="player-card sticky-player">
             <div class="player-status" id="playerStatus">Initializing player...</div>
 
             <div class="track-info" id="trackInfo">
@@ -204,6 +206,16 @@
                 <span style="align-self: center;">Volume</span>
                 <input type="range" id="volumeRange" min="0" max="100" value="0" aria-label="Volume" oninput="volumeDragging = true" onchange="commitVolume(this.value)" disabled style="align-self: center;">
             </div>
+        </div>
+
+        <div class="sticky-player-bar" id="stickyPlayerBar">
+            <div class="sticky-player-art-wrap">
+                <img class="sticky-player-art" id="stickyPlayerArt" alt="" hidden>
+            </div>
+            <div class="sticky-player-title" id="stickyPlayerTitle">No track playing</div>
+            <button type="button" class="btn btn-play" id="stickyPlayBtn" onclick="togglePlayback()" disabled>▶ Play</button>
+            <button type="button" class="btn btn-next" id="stickyNextBtn" onclick="nextTrack()" disabled>⏭ Next</button>
+        </div>
 
             {% include "song_radio/button.html" %}
             {% include "player/features/sleep_timer/timer.html" %}
@@ -537,7 +549,6 @@
             {% include "player/features/track_actions/panel.html" %}
 
             <div class="status-indicator" id="statusIndicator"></div>
-        </div>
     </div>
 
     <script src="{% static 'player/js/states.js' %}"></script>
@@ -3239,6 +3250,60 @@
         window.addEventListener('load', () => {
             loadPlaylists(true);
         });
+
+        // Compact bar mirrors #playBtn (label + disabled) and the track title/art.
+        // Playback still goes through togglePlayback / nextTrack — no second player.
+        (function mirrorStickyPlayer() {
+            const playBtn = document.getElementById('playBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const trackInfo = document.getElementById('trackInfo');
+            const stickyPlay = document.getElementById('stickyPlayBtn');
+            const stickyNext = document.getElementById('stickyNextBtn');
+            const stickyTitle = document.getElementById('stickyPlayerTitle');
+            const stickyArt = document.getElementById('stickyPlayerArt');
+            if (!playBtn || !stickyPlay || !trackInfo) return;
+
+            function syncStickyPlayer() {
+                stickyPlay.textContent = playBtn.textContent;
+                stickyPlay.disabled = playBtn.disabled;
+                if (stickyNext && nextBtn) stickyNext.disabled = nextBtn.disabled;
+
+                const nameEl = trackInfo.querySelector('.track-name');
+                if (stickyTitle && nameEl) stickyTitle.textContent = nameEl.textContent;
+
+                const imageEl = trackInfo.querySelector('.track-image');
+                const src = imageEl ? imageEl.getAttribute('src') : '';
+                if (!stickyArt) return;
+                if (src) {
+                    stickyArt.src = src;
+                    stickyArt.alt = nameEl ? nameEl.textContent : 'Album art';
+                    stickyArt.hidden = false;
+                } else {
+                    stickyArt.hidden = true;
+                    stickyArt.removeAttribute('src');
+                }
+            }
+
+            syncStickyPlayer();
+            const observer = new MutationObserver(syncStickyPlayer);
+            observer.observe(playBtn, {
+                subtree: true,
+                childList: true,
+                characterData: true,
+                attributes: true,
+                attributeFilter: ['disabled'],
+            });
+            if (nextBtn) {
+                observer.observe(nextBtn, { attributes: true, attributeFilter: ['disabled'] });
+            }
+            observer.observe(trackInfo, {
+                subtree: true,
+                childList: true,
+                characterData: true,
+                attributes: true,
+                attributeFilter: ['src'],
+            });
+        })();
     </script>
     <script src="{% static 'player/js/shortcuts.js' %}"></script>
 

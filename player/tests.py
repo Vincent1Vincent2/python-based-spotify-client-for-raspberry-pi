@@ -1237,3 +1237,36 @@ class NowPlayingStageTests(TestCase):
         self.assertIn("var(--color-bg)", css)
         self.assertIn("var(--color-text)", css)
         self.assertIn("var(--border-width)", css)
+
+
+class StickyPlayerPageTests(TestCase):
+    def test_index_links_sticky_player_css_and_keeps_play_button(self):
+        import time
+        from unittest.mock import patch
+
+        account = SpotifyAccount.objects.create(
+            spotify_user_id="sticky-user",
+            display_name="Sticky",
+            access_token="access",
+            refresh_token="refresh",
+            token_expires_at=time.time() + 3600,
+        )
+        client = Client()
+        session = client.session
+        session["active_account_id"] = account.id
+        session["use_web_player"] = True
+        session.save()
+
+        with patch("player.spotify_api.SpotifyAPI.get_devices", return_value=FakeResponse({"devices": []})), \
+                patch("player.spotify_api.SpotifyAPI.get_current_playback", return_value=FakeResponse({}, status=204)):
+            page = client.get("/")
+
+        self.assertEqual(page.status_code, 200)
+        body = page.content.decode()
+        self.assertEqual(body.count("player/css/sticky-player.css"), 1)
+        self.assertIn('id="playBtn"', body)
+        self.assertIn('class="player-card sticky-player"', body)
+        self.assertIn('id="stickyPlayBtn"', body)
+        self.assertIn('id="stickyNextBtn"', body)
+        self.assertEqual(body.count('onclick="togglePlayback()"'), 2)
+        self.assertEqual(body.count('onclick="nextTrack()"'), 2)
