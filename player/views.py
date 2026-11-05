@@ -19,6 +19,7 @@ from .features.listening_stats.stats import (
     ListeningStatsScopeError,
     load_listening_stats,
 )
+from .features.context_chip.context import build_current_playback
 from .models import SpotifyAccount
 
 
@@ -386,19 +387,13 @@ def current_playback(request):
             return JsonResponse({'error': error_msg}, status=response.status_code)
         
         playback = response.json()
-        
-        # Extract basic info from playback state
-        item = playback.get('item')
-        currently_playing_type = playback.get('currently_playing_type', 'track')
-        is_playing = playback.get('is_playing', False)
-        device = playback.get('device', {})
-        progress_ms = playback.get('progress_ms', 0)
-        
+
         # Cache the last known context/item so play() can explicitly
         # resume here if Spotify has already dropped the "resume"
         # context entirely (e.g. right after a playlist finishes -
         # GitHub issue #6). This is polled every few seconds from the
         # frontend, so it stays fresh right up until playback stops.
+        item = playback.get('item')
         context = playback.get('context') or {}
         if item:
             request.session['last_known_playback'] = {
@@ -406,89 +401,11 @@ def current_playback(request):
                 'item_uri': item.get('uri'),
             }
             request.session.save()
-        
-        # Process item if available
-        if item:
-            item_type = item.get('type', currently_playing_type)
-            
-            if item_type == 'episode':
-                # Podcast episode - handle according to Spotify API structure
-                show = item.get('show', {})
-                images = item.get('images', [])
-                
-                episode_data = {
-                    'id': item.get('id'),
-                    'name': item.get('name', 'Unknown Episode'),
-                    'show': show.get('name', 'Unknown Podcast') if show else 'Unknown Podcast',
-                    'description': item.get('description', ''),
-                    'image': images[0]['url'] if images and len(images) > 0 else None,
-                    'duration_ms': item.get('duration_ms', 0),
-                    'progress_ms': progress_ms,
-                    'type': 'episode'
-                }
-                
-                return JsonResponse({
-                    'is_playing': is_playing,
-                    'track': episode_data,
-                    'type': 'episode',
-                    'shuffle_state': playback.get('shuffle_state'),
-                    'repeat_state': playback.get('repeat_state'),
-                    'device': {
-                        'id': device.get('id'),
-                        'name': device.get('name'),
-                        'type': device.get('type'),
-                        'volume_percent': device.get('volume_percent'),
-                    }
-                })
-            else:
-                # Track - handle according to Spotify API structure
-                album = item.get('album', {})
-                artists = item.get('artists', [])
-                album_images = album.get('images', [])
-                
-                track_data = {
-                    'id': item.get('id'),
-                    'uri': item.get('uri'),
-                    'name': item.get('name', 'Unknown Track'),
-                    'artists': [artist.get('name', 'Unknown Artist') for artist in artists],
-                    'album': album.get('name', 'Unknown Album'),
-                    'album_uri': album.get('uri'),
-                    'album_id': album.get('id') or '',
-                    'image': album_images[0]['url'] if album_images and len(album_images) > 0 else None,
-                    'duration_ms': item.get('duration_ms', 0),
-                    'progress_ms': progress_ms,
-                    'type': 'track'
-                }
-                
-                return JsonResponse({
-                    'is_playing': is_playing,
-                    'track': track_data,
-                    'type': 'track',
-                    'shuffle_state': playback.get('shuffle_state'),
-                    'repeat_state': playback.get('repeat_state'),
-                    'device': {
-                        'id': device.get('id'),
-                        'name': device.get('name'),
-                        'type': device.get('type'),
-                        'volume_percent': device.get('volume_percent'),
-                    }
-                })
-        
-        # No item in response - device might be active but no track/episode loaded
-        # This can happen when playback is paused or between tracks
-        return JsonResponse({
-            'is_playing': is_playing,
-            'track': None,
-            'type': None,
-            'shuffle_state': playback.get('shuffle_state'),
-            'repeat_state': playback.get('repeat_state'),
-            'device': {
-                'id': device.get('id'),
-                'name': device.get('name'),
-                'type': device.get('type'),
-                'volume_percent': device.get('volume_percent'),
-            } if device else None
-        })
+
+        # Context is type and uri copied from this payload. No playlist,
+        # album, artist, or show lookup. Track fields from later features
+        # (album id, album uri, shuffle, repeat, volume) stay on the helper.
+        return JsonResponse(build_current_playback(playback))
         
     except requests.exceptions.RequestException as e:
         return JsonResponse({'error': f'Request failed: {str(e)}'}, status=500)
