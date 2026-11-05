@@ -228,6 +228,7 @@ class LibraryPageTests(TestCase):
         self.assertIn(
             '<div class="track-info" id="trackInfo">\n'
             '                <div class="track-name">No track playing</div>\n'
+            '                <div class="playback-context" id="playbackContext" hidden></div>\n'
             '            </div>\n'
             '            {% include "library_hearts/heart.html" %}\n',
             source,

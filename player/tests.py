@@ -535,8 +535,8 @@ class AlbumCardTests(TestCase):
         self.assertIn("album-card-cover", body)
         self.assertIn("album-card-artist", body)
         self.assertIn("function displayAlbums", body)
-        self.assertIn('class="playlist-item"', body)
-        self.assertNotIn("playlist-cards.css", body)
+        self.assertIn('class="playlist-card"', body)
+        self.assertEqual(body.count("player/css/playlist-cards.css"), 1)
 
     def test_index_contains_states_js(self):
         import time
@@ -1002,7 +1002,7 @@ class AccountMenuPageTests(TestCase):
 
         self.assertEqual(page.status_code, 200)
         body = page.content.decode()
-        header = body.split('<div class="header">', 1)[1].split('<div class="player-card">', 1)[0]
+        header = body.split('<div class="header">', 1)[1].split('<div class="player-card', 1)[0]
         self.assertEqual(header.count('id="accountMenu"'), 1)
         self.assertIn("player/js/account-menu.js", header)
         self.assertEqual(body.count("player/js/account-menu.js"), 1)

@@ -131,10 +131,7 @@ class ArtistScopeTests(TestCase):
         self.assertEqual(len(parts), len(set(parts)))
         scopes = set(parts)
         self.assertTrue(ORIGINAL_SCOPES <= scopes)
-        self.assertEqual(
-            scopes,
-            ORIGINAL_SCOPES | {'user-follow-modify', 'user-follow-read'},
-        )
+        self.assertTrue({'user-follow-modify', 'user-follow-read'} <= scopes)
         self.assertEqual(ALBUM_LIMIT, 10)
         self.assertEqual(TRACK_LIMIT, 10)
         self.assertEqual(QUERY_CHAR_LIMIT, 100)

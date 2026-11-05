@@ -54,9 +54,11 @@ ROOT_URLCONF = 'spotify_client.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'player' / 'features' / 'song_radio' / 'templates'],
-        # Queue panel markup lives with player/features/queue_panel.
-        'DIRS': [BASE_DIR / 'player' / 'features' / 'queue_panel' / 'templates'],
+        # Feature templates that are not installed apps.
+        'DIRS': [
+            BASE_DIR / 'player' / 'features' / 'song_radio' / 'templates',
+            BASE_DIR / 'player' / 'features' / 'queue_panel' / 'templates',
+        ],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

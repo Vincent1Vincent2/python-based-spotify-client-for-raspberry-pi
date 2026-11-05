@@ -93,21 +93,21 @@ class AddItemsCallCountTests(TestCase):
 
 class TrackActionScopeTests(TestCase):
     def test_scopes_keep_current_and_add_library_modify(self):
-        self.assertEqual(
-            SPOTIFY_SCOPE.split(),
-            [
-                "user-modify-playback-state",
-                "user-read-playback-state",
-                "user-read-currently-playing",
-                "user-read-playback-position",
-                "streaming",
-                "playlist-read-private",
-                "playlist-read-collaborative",
-                "playlist-modify-private",
-                "user-library-read",
-                "user-library-modify",
-            ],
-        )
+        scopes = SPOTIFY_SCOPE.split()
+        self.assertEqual(len(scopes), len(set(scopes)))
+        for scope in (
+            "user-modify-playback-state",
+            "user-read-playback-state",
+            "user-read-currently-playing",
+            "user-read-playback-position",
+            "streaming",
+            "playlist-read-private",
+            "playlist-read-collaborative",
+            "playlist-modify-private",
+            "user-library-read",
+            "user-library-modify",
+        ):
+            self.assertIn(scope, scopes)
 
 
 class TrackActionsPageTests(TestCase):

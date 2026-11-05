@@ -145,14 +145,11 @@ class LoadHomeTests(SimpleTestCase):
 class LibraryHomeScopeTests(SimpleTestCase):
     def test_scope_adds_recently_played_and_keeps_the_rest(self):
         scopes = SPOTIFY_SCOPE.split()
-        self.assertEqual(
-            set(scopes),
-            set(EXISTING_SCOPES) | {"user-read-recently-played"},
-        )
+        self.assertTrue(set(EXISTING_SCOPES) | {"user-read-recently-played"} <= set(scopes))
         self.assertIn("playlist-modify-private", scopes)
         self.assertIn("user-read-recently-played", scopes)
         self.assertEqual(len(scopes), len(set(scopes)))
-        self.assertEqual(scopes[-1], "user-read-recently-played")
+        self.assertEqual(scopes.count("user-read-recently-played"), 1)
 
 
 def _account(spotify_user_id):

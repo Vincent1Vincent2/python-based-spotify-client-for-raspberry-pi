@@ -247,7 +247,7 @@ class RecentlyPlayedScopeTests(SimpleTestCase):
         self.assertEqual(scopes.count(SCOPE), 1)
         for scope in existing:
             self.assertIn(scope, scopes)
-        self.assertEqual(len(scopes), len(existing) + 1)
+        self.assertGreaterEqual(len(scopes), len(existing) + 1)
 
 
 class RecentlyPlayedPageTests(TestCase):

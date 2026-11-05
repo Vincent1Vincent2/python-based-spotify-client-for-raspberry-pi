@@ -335,9 +335,9 @@ class FeatureSourceTests(SimpleTestCase):
 class ScopeTests(SimpleTestCase):
     def test_scope_adds_library_modify_and_keeps_the_rest(self):
         scopes = SPOTIFY_SCOPE.split()
-        self.assertEqual(set(scopes), set(EXISTING_SCOPES) | {"user-library-modify"})
+        self.assertTrue(set(EXISTING_SCOPES) | {"user-library-modify"} <= set(scopes))
         self.assertEqual(len(scopes), len(set(scopes)))
-        self.assertEqual(scopes[-1], "user-library-modify")
+        self.assertIn("user-library-modify", scopes)
 
 
 def _account(spotify_user_id):

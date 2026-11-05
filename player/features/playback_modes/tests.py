@@ -230,6 +230,8 @@ class CurrentPlaybackModeTests(TestCase):
                 "name": "Lonely Road",
                 "artists": ["Ada"],
                 "album": "Album",
+                "album_uri": None,
+                "album_id": "",
                 "image": "https://example.com/cover.jpg",
                 "duration_ms": 180000,
                 "progress_ms": 1200,
@@ -244,6 +246,7 @@ class CurrentPlaybackModeTests(TestCase):
                 "type": "Speaker",
                 "volume_percent": 37,
             },
+            "context": {"type": None, "uri": "spotify:playlist:abc"},
         })
         self.assertEqual(self.api.calls, [("get_current_playback", "track,episode")])
 
