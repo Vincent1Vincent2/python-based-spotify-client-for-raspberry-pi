@@ -1605,6 +1605,20 @@
             }, true);
         })();
 
+        function applyTransferStatus(data) {
+            const playerStatus = document.getElementById('playerStatus');
+            if (data && data.error) {
+                playerStatus.textContent = data.error;
+                return true;
+            }
+            if (data && data.message) {
+                playerStatus.textContent = data.message;
+            } else {
+                playerStatus.textContent = '';
+            }
+            return false;
+        }
+
         function selectWebPlayer() {
             // Make sure we have the web player device ID before transferring
             if (!deviceId && player) {
@@ -1620,8 +1634,13 @@
             document.getElementById('statusIndicator').textContent = 'Transferring to web player...';
 
             fetch(`/select-web-player/?device_id=${deviceId}`, { method: 'POST' })
-                .then(response => response.json())
-                .then(data => {
+                .then(response => response.json().catch(() => ({})).then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    const failed = applyTransferStatus(data) || !ok || (data && data.error);
+                    if (failed) {
+                        document.getElementById('statusIndicator').textContent = 'Error: ' + ((data && data.error) || 'Transfer failed');
+                        return;
+                    }
                     if (data.status === 'selected') {
                         document.getElementById('statusIndicator').textContent = 'Switched to web player!';
                         // Update the device selector UI immediately
@@ -1638,29 +1657,32 @@
                         // Don't reload - just update UI and let the player handle it
                         useWebPlayer = true;
                         document.getElementById('statusIndicator').textContent = 'Now playing on web player';
-                    } else if (data.error) {
-                        document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
                     }
                 })
                 .catch(error => {
+                    document.getElementById('playerStatus').textContent = 'Error: ' + error;
                     document.getElementById('statusIndicator').textContent = 'Error: ' + error;
                 });
         }
 
         function selectDevice(deviceId) {
             fetch(`/transfer/?device_id=${deviceId}`, { method: 'POST' })
-                .then(response => response.json())
-                .then(data => {
+                .then(response => response.json().catch(() => ({})).then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    const failed = applyTransferStatus(data) || !ok || (data && data.error);
+                    if (failed) {
+                        document.getElementById('statusIndicator').textContent = 'Error: ' + ((data && data.error) || 'Transfer failed');
+                        return;
+                    }
                     if (data.status === 'transferred') {
                         document.getElementById('statusIndicator').textContent = 'Device switched!';
                         setTimeout(() => {
                             location.reload();
                         }, 500);
-                    } else if (data.error) {
-                        document.getElementById('statusIndicator').textContent = 'Error: ' + data.error;
                     }
                 })
                 .catch(error => {
+                    document.getElementById('playerStatus').textContent = 'Error: ' + error;
                     document.getElementById('statusIndicator').textContent = 'Error: ' + error;
                 });
         }
