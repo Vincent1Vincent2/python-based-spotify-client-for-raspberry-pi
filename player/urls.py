@@ -51,6 +51,7 @@ urlpatterns = [
     path('home/', library_home.home, name='library_home'),
     path('', include('player.features.library_hearts.urls')),
     path('mix/', smart_mix_view, name='smart_mix'),
+    path('features/artist-pages/', include('player.features.artist_pages.urls')),
     path('settings/', views.settings_view, name='settings'),
     path('settings/audio/', views.update_audio_settings, name='update_audio_settings'),
     path('settings/reboot/', views.reboot_system, name='reboot_system'),

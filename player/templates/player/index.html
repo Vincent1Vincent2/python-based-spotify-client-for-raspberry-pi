@@ -1073,11 +1073,11 @@
                 html += '<div class="discover-section-title">🎤 Artists</div>';
                 html += '<div class="discover-grid">';
                 html += artists.map(artist => `
-                    <div class="discover-item" onclick="searchForArtist('${artist.name.replace(/'/g, "\\'")}')">
+                    <a class="discover-item" href="/features/artist-pages/?id=${encodeURIComponent(artist.id)}" style="display:block;color:inherit;text-decoration:none;">
                         <img src="${artist.image || 'https://via.placeholder.com/180?text=No+Image'}" alt="${artist.name}" class="discover-item-image" style="border-radius: 50%;">
                         <div class="discover-item-name">${artist.name}</div>
                         <div class="discover-item-info">Artist</div>
-                    </div>
+                    </a>
                 `).join('');
                 html += '</div></div>';
             }

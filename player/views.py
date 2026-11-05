@@ -19,7 +19,7 @@ SPOTIFY_SCOPE = (
     'user-modify-playback-state user-read-playback-state '
     'user-read-currently-playing user-read-playback-position streaming '
     'playlist-read-private playlist-read-collaborative '
-    'playlist-modify-private user-library-read user-library-modify'
+    'playlist-modify-private user-library-read user-library-modify user-follow-modify user-follow-read'
 )
 
 
