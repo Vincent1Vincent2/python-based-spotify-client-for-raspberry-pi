@@ -580,6 +580,83 @@ class SpotifyAPI:
             json={'uris': list(uris)},
         )
 
+    def update_playlist_details(self, playlist_id, name=None, description=None):
+        """
+        Change a playlist's name and/or description.
+
+        PUT /playlists/{id}. Omitted fields are left unchanged.
+        public is never sent, so this does not require playlist-modify-public.
+        """
+        body = {}
+        if name is not None:
+            body['name'] = name
+        if description is not None:
+            body['description'] = description
+        return self.put(f'playlists/{playlist_id}', json=body)
+
+    def remove_playlist_from_library(self, playlist_id):
+        """
+        Remove a playlist from the current user's library.
+
+        DELETE /me/library?uris=spotify:playlist:{id}. Development Mode
+        replaced DELETE /playlists/{id}/followers with this. Spotify still
+        has no endpoint that erases the playlist itself.
+        """
+        raw = str(playlist_id).strip()
+        if raw.startswith('spotify:playlist:'):
+            uri = raw
+        else:
+            uri = f'spotify:playlist:{raw}'
+        return self.delete('me/library', params={'uris': uri})
+
+    def get_playlist_items(self, playlist_id, limit=50, offset=0):
+        """
+        Get one page of playlist items.
+
+        GET /playlists/{id}/items. Development Mode allows at most 50.
+        """
+        safe_limit = max(1, min(int(limit), 50))
+        safe_offset = max(0, int(offset))
+        return self.get(
+            f'playlists/{playlist_id}/items',
+            params={'limit': safe_limit, 'offset': safe_offset},
+        )
+
+    def remove_playlist_items(self, playlist_id, uris, snapshot_id=None, positions=None):
+        """
+        Remove items from a playlist.
+
+        DELETE /playlists/{id}/items. positions, when given, selects one
+        occurrence of that URI instead of every copy.
+        """
+        items = []
+        for index, uri in enumerate(uris):
+            entry = {'uri': uri}
+            if positions is not None and index < len(positions) and positions[index] is not None:
+                entry['positions'] = [int(positions[index])]
+            items.append(entry)
+        body = {'items': items}
+        if snapshot_id:
+            body['snapshot_id'] = snapshot_id
+        return self.delete(f'playlists/{playlist_id}/items', json=body)
+
+    def reorder_playlist_items(self, playlist_id, range_start, insert_before, range_length=1, snapshot_id=None):
+        """
+        Move a range of playlist items.
+
+        PUT /playlists/{id}/items with range_start, insert_before, and
+        range_length. uris are not sent, so this reorders and does not
+        replace the playlist.
+        """
+        body = {
+            'range_start': int(range_start),
+            'insert_before': int(insert_before),
+            'range_length': int(range_length),
+        }
+        if snapshot_id:
+            body['snapshot_id'] = snapshot_id
+        return self.put(f'playlists/{playlist_id}/items', json=body)
+
     def set_shuffle(self, state, device_id=None):
         """Shuffle on or off. One PUT /me/player/shuffle."""
         params = {'state': 'true' if state else 'false'}
