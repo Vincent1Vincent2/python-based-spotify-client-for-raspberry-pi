@@ -1,0 +1,11 @@
+/* Keyboard focus. currentColor follows the text color on the light theme
+   and on a later dark theme. Hover colors stay where they are. */
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+input.search-input:focus-visible,
+.tab-button:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}

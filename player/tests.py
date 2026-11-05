@@ -21,6 +21,8 @@ from player.feel import (
 )
 from player.feel_radio import advance_feel_radio, start_feel_radio
 from player.models import FeelRadio, SpotifyAccount
+import re
+from django.template.loader import render_to_string
 
 
 def _track(number, name, artist="Ada"):
@@ -1270,3 +1272,20 @@ class StickyPlayerPageTests(TestCase):
         self.assertIn('id="stickyNextBtn"', body)
         self.assertEqual(body.count('onclick="togglePlayback()"'), 2)
         self.assertEqual(body.count('onclick="nextTrack()"'), 2)
+
+
+class FocusRingTests(TestCase):
+    def test_player_page_links_focus_css_once(self):
+        html = render_to_string("player/index.html", {
+            "client_id": "client",
+            "access_token": "token",
+            "use_web_player": True,
+            "devices": [],
+            "accounts": [],
+            "active_account": None,
+            "selected_device_id": None,
+        })
+        links = re.findall(r"<link\b[^>]*player/css/focus\.css[^>]*>", html)
+        self.assertEqual(links, [
+            '<link rel="stylesheet" href="/static/player/css/focus.css">',
+        ])
