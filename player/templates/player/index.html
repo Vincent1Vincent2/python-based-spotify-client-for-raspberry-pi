@@ -296,6 +296,7 @@
                     <button class="tab-button" onclick="switchTab('songs')" id="tab-songs">Songs</button>
                     <button class="tab-button" onclick="switchTab('discover')" id="tab-discover">Discover</button>
                     <button class="tab-button" onclick="switchTab('feel')" id="tab-feel">Feel</button>
+                    <button class="tab-button" onclick="switchTab('following')" id="tab-following">Following</button>
                     <button class="tab-button" onclick="switchTab('recent')" id="tab-recent">Recent</button>
                     <button class="tab-button" onclick="switchTab('search-browser')" id="tab-search-browser">Search+</button>
                     <button class="tab-button" onclick="switchTab('home')" id="tab-home">Home</button>
@@ -512,6 +513,17 @@
                     </div>
                 </div>
             </div>
+
+                <div class="tab-content" id="content-following">
+                    <div class="following-section" id="followingSection">
+                        <div class="section-header">
+                            <h3>Following</h3>
+                        </div>
+                        <div class="discover-grid" id="followingGrid">
+                            <div class="following-message">Loading artists you follow...</div>
+                        </div>
+                    </div>
+                </div>
 
             <div class="playlist-detail-view" id="playlistDetailView">
                 <button class="back-button" id="detailBackButton" onclick="backFromDetail()">← Back to
@@ -2104,10 +2116,16 @@
                 loadSongs(true);
             } else if (tabName === 'discover') {
                 loadDiscover(true);
+            } else if (tabName === 'following') {
+                loadFollowing();
             } else if (tabName === 'recent') {
                 loadRecent();
             } else if (tabName === 'stats') {
                 loadListeningStats();
+            } else if (tabName === 'home') {
+                loadHome();
+            } else if (tabName === 'books') {
+                loadBooks();
             }
         }
 
@@ -2157,8 +2175,6 @@
             if (!items.length) {
                 list.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No tracks played recently.</div>';
                 return;
-            } else if (tabName === 'home') {
-                loadHome();
             }
             list.innerHTML = items.map(function (item) {
                 const artists = (item.artists || []).join(', ');
@@ -2228,9 +2244,10 @@
 
         function homeErrorHtml(data) {
             const message = escapeHtml((data && data.error) || 'Could not load recently played songs.');
-            } else if (tabName === 'books') {
-                loadBooks();
+            if (data && data.code === 'needs_scope') {
+                return message + ' <a href="/login/?auth=1">Reconnect Spotify</a>';
             }
+            return message;
         }
 
         function booksErrorHtml(data) {
@@ -2528,6 +2545,55 @@
                 const card = event.target.closest('[data-book-id]');
                 if (card) viewBook(card.getAttribute('data-book-id'));
             });
+        }
+
+
+        function loadFollowing() {
+            const grid = document.getElementById('followingGrid');
+            if (!grid) return;
+            grid.innerHTML = '<div class="following-message">Loading artists you follow...</div>';
+            fetch('/features/followed-artists/')
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    }).catch(function () {
+                        return { ok: false, data: {} };
+                    });
+                })
+                .then(function (result) {
+                    const data = result.data || {};
+                    if (data.code === 'needs_scope') {
+                        const login = data.login || '/login/?auth=1';
+                        grid.innerHTML = '<div class="following-message">Reconnect Spotify to show artists you follow. <a href="' + escapeAttr(login) + '">Reconnect Spotify</a></div>';
+                        return;
+                    }
+                    if (!result.ok || data.error) {
+                        grid.innerHTML = '<div class="following-message">' + escapeHtml(data.error || 'Could not load artists you follow.') + '</div>';
+                        return;
+                    }
+                    displayFollowing(data.artists || []);
+                })
+                .catch(function () {
+                    grid.innerHTML = '<div class="following-message">Could not load artists you follow.</div>';
+                });
+        }
+
+        function displayFollowing(artists) {
+            const grid = document.getElementById('followingGrid');
+            if (!artists.length) {
+                grid.innerHTML = '<div class="following-message">No followed artists.</div>';
+                return;
+            }
+            grid.innerHTML = artists.map(function (artist) {
+                const name = artist.name || 'Unknown artist';
+                const image = artist.image || 'https://via.placeholder.com/180?text=No+Image';
+                const href = '/features/artist-pages/?id=' + encodeURIComponent(artist.id || '');
+                return ''
+                    + '<a class="discover-item following-artist" href="' + escapeAttr(href) + '">'
+                    + '<img src="' + escapeAttr(image) + '" alt="' + escapeAttr(name) + '" class="discover-item-image following-artist-image">'
+                    + '<div class="discover-item-name">' + escapeHtml(name) + '</div>'
+                    + '</a>';
+            }).join('');
         }
 
         let feelActive = false;
@@ -2868,6 +2934,24 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             })
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    finishMixRequest();
+                    if (!result.ok || result.data.error) {
+                        status.innerHTML = mixErrorHtml(result.data);
+                        return;
+                    }
+                    renderSmartMix(result.data);
+                })
+                .catch(function () {
+                    finishMixRequest();
+                    status.textContent = 'Smart mix did not start.';
+                });
+        }
 
         let rotationKind = '';
         let rotationRange = 'medium_term';
@@ -2910,19 +2994,6 @@
                     });
                 })
                 .then(function (result) {
-                    finishMixRequest();
-                    if (!result.ok || result.data.error) {
-                        status.innerHTML = mixErrorHtml(result.data);
-                        return;
-                    }
-                    renderSmartMix(result.data);
-                })
-                .catch(function () {
-                    finishMixRequest();
-                    status.textContent = 'Smart mix did not start.';
-                });
-        }
-
                     if (ticket !== rotationTicket) {
                         return;
                     }
