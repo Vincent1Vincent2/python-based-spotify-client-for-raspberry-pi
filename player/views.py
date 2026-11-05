@@ -115,14 +115,7 @@ def login_view(request):
     always starts authorization, including when a session is already
     active, so a missing scope can be granted and another account
     can be linked.
-    auth=1 always starts OAuth, including when a session is already
-    active, so a 403 needs_scope response can send the player to
-    /login/?auth=1 and grant user-read-recently-played. Without that
-    flag, an active session still goes straight to the player, and the
-    page can offer accounts already linked on this device.
     """
-    # auth=1 is the reconnect path (a missing library scope, or a new
-    # account). It has to start OAuth even when a session already exists.
     if request.GET.get('auth') == '1':
         api = SpotifyAPI()
         auth_url = api.get_authorization_url(SPOTIFY_SCOPE)

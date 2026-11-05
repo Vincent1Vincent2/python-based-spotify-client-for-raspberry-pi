@@ -5,6 +5,7 @@ from .features.library_home import views as library_home
 from .features.playback_modes import views as playback_modes
 from .features.playlist_pins import pin_playlist, playlist_marks, tag_playlist
 from .features.smart_mixes.views import smart_mix_view
+from .features.audiobook_shelf import views as audiobook_shelf
 
 urlpatterns = [
     path('', views.index, name='index'),
@@ -42,6 +43,11 @@ urlpatterns = [
     path('album-detail/', views.album_detail, name='album_detail'),
     path('play-album/', views.play_album, name='play_album'),
     path('saved-tracks/', views.saved_tracks, name='saved_tracks'),
+    path('books/', audiobook_shelf.saved_audiobooks, name='audiobooks'),
+    path('books/detail/', audiobook_shelf.audiobook_detail, name='audiobook_detail'),
+    path('books/play-chapter/', audiobook_shelf.play_audiobook_chapter, name='play_audiobook_chapter'),
+    path('books/save/', audiobook_shelf.save_audiobook_view, name='save_audiobook'),
+    path('books/remove/', audiobook_shelf.remove_audiobook_view, name='remove_audiobook'),
     path('discover/', views.discover, name='discover'),
     path('feel/status/', views.feel_status_view, name='feel_status'),
     path('feel/start/', views.feel_start_view, name='feel_start'),

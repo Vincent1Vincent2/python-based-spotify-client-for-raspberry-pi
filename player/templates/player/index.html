@@ -248,6 +248,7 @@
                     <button class="tab-button" onclick="switchTab('home')" id="tab-home">Home</button>
                     <button class="tab-button" onclick="switchTab('mix')" id="tab-mix">Mix</button>
                     <button class="tab-button" onclick="switchTab('playlist-editor')" id="tab-playlist-editor">Playlists editor</button>
+                    <button class="tab-button" onclick="switchTab('books')" id="tab-books">Books</button>
                 </div>
 
                 <div class="tab-content active" id="content-playlists">
@@ -401,6 +402,27 @@
                     </div>
                 </div>
                 {% include "playlist_editor/editor.html" %}
+                <div class="tab-content" id="content-books">
+                    <div class="books-section" id="booksSection">
+                        <div class="section-header">
+                            <h3>Books</h3>
+                        </div>
+                        <p class="books-note">
+                            Saved audiobooks. Open a book to load its chapters.
+                        </p>
+                        <div class="books-error" id="booksMessage"></div>
+                        <div class="albums-grid" id="booksGrid">
+                            <div style="text-align: center; padding: 20px; opacity: 0.7;">Loading books...</div>
+                        </div>
+                    </div>
+                    <div class="playlist-detail-view" id="bookDetailView">
+                        <button class="back-button" type="button" onclick="closeBookDetail()">← Back to Books</button>
+                        <div class="playlist-detail-header" id="bookDetailHeader"></div>
+                        <div class="playlist-detail-actions" id="bookDetailActions"></div>
+                        <div class="books-error" id="bookDetailError"></div>
+                        <div class="tracks-list" id="bookChapters"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="playlist-detail-view" id="playlistDetailView">
@@ -1844,6 +1866,7 @@
             const albumsSection = document.getElementById('albumsSection');
             const discoverSection = document.getElementById('discoverSection');
             if (playlistDetailView) playlistDetailView.style.display = 'none';
+            closeBookDetail();
             // Remove inline display so sections use their normal visibility (controlled by tab)
             if (playlistsSection) playlistsSection.style.removeProperty('display');
             if (albumsSection) albumsSection.style.removeProperty('display');
@@ -1992,6 +2015,13 @@
 
         function homeErrorHtml(data) {
             const message = escapeHtml((data && data.error) || 'Could not load recently played songs.');
+            } else if (tabName === 'books') {
+                loadBooks();
+            }
+        }
+
+        function booksErrorHtml(data) {
+            const message = escapeHtml((data && data.error) || 'Audiobooks are unavailable.');
             if (data && data.code === 'needs_scope') {
                 return message + ' <a href="/login/?auth=1">Reconnect Spotify</a>';
             }
@@ -2030,6 +2060,261 @@
                     '<div class="home-track-text"><div class="home-track-name">' + escapeHtml(track.name) + '</div>' +
                     '<div class="home-track-artist">' + artists + album + '</div>' + when + '</div></div>';
             }).join('');
+        }
+
+        function showBookError(data) {
+            const html = booksErrorHtml(data);
+            const detail = document.getElementById('bookDetailView');
+            const detailOpen = detail && detail.style.display === 'block';
+            const detailError = document.getElementById('bookDetailError');
+            const listMessage = document.getElementById('booksMessage');
+            if (detailOpen && detailError) {
+                detailError.innerHTML = html;
+            } else if (listMessage) {
+                listMessage.innerHTML = html;
+            }
+            const status = document.getElementById('statusIndicator');
+            if (status) status.textContent = (data && data.error) || 'Audiobooks are unavailable.';
+        }
+
+        function readBooksResponse(response) {
+            return response.json().then(function (data) {
+                return { ok: response.ok, data: data || {} };
+            }).catch(function () {
+                return { ok: false, data: { error: 'Audiobooks are unavailable.' } };
+            });
+        }
+
+        function closeBookDetail() {
+            const detail = document.getElementById('bookDetailView');
+            const section = document.getElementById('booksSection');
+            if (detail) detail.style.display = 'none';
+            if (section) section.style.removeProperty('display');
+        }
+
+        function formatBookDuration(ms) {
+            const total = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+            const hours = Math.floor(total / 3600);
+            const minutes = Math.floor((total % 3600) / 60);
+            const seconds = total % 60;
+            if (hours > 0) {
+                return hours + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+            }
+            return minutes + ':' + String(seconds).padStart(2, '0');
+        }
+
+        function chapterPlayKind(uri) {
+            const match = /^spotify:(episode|track|chapter):[0-9A-Za-z]+$/.exec(uri || '');
+            return match ? match[1] : '';
+        }
+
+        function loadBooks() {
+            const grid = document.getElementById('booksGrid');
+            const message = document.getElementById('booksMessage');
+            if (!grid) return;
+            if (message) message.innerHTML = '';
+            grid.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">Loading books...</div>';
+            fetch('/books/')
+                .then(readBooksResponse)
+                .then(function (result) {
+                    const tab = document.getElementById('content-books');
+                    if (!tab || !tab.classList.contains('active')) return;
+                    const data = result.data || {};
+                    if (!result.ok || data.error) {
+                        grid.innerHTML = '';
+                        showBookError(data);
+                        return;
+                    }
+                    renderBooks(data);
+                })
+                .catch(function () {
+                    showBookError({ error: 'Could not load audiobooks.' });
+                });
+        }
+
+        function renderBooks(data) {
+            const grid = document.getElementById('booksGrid');
+            const message = document.getElementById('booksMessage');
+            const books = data.audiobooks || [];
+            if (message) {
+                if (typeof data.total === 'number' && data.total > books.length) {
+                    message.textContent = 'Showing ' + books.length + ' of ' + data.total + ' saved books.';
+                } else {
+                    message.textContent = '';
+                }
+            }
+            const status = document.getElementById('statusIndicator');
+            if (status) status.textContent = '';
+            if (!books.length) {
+                grid.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No saved audiobooks.</div>';
+                return;
+            }
+            grid.innerHTML = books.map(function (book) {
+                const authors = (book.authors || []).join(', ') || 'Unknown author';
+                const chapters = book.total_chapters ? book.total_chapters + ' chapters' : '';
+                const image = book.image || 'https://via.placeholder.com/180?text=Book';
+                return '<div class="album-item book-card" data-book-id="' + escapeHtml(book.id) + '">' +
+                    '<img src="' + escapeHtml(image) + '" alt="" class="album-image">' +
+                    '<div class="album-name">' + escapeHtml(book.name) + '</div>' +
+                    '<div class="album-info">' + escapeHtml(authors) + '</div>' +
+                    (chapters ? '<div class="album-info">' + escapeHtml(chapters) + '</div>' : '') +
+                    '</div>';
+            }).join('');
+        }
+
+        function viewBook(bookId) {
+            const section = document.getElementById('booksSection');
+            const detail = document.getElementById('bookDetailView');
+            if (section) section.style.display = 'none';
+            if (detail) detail.style.display = 'block';
+            const errorBox = document.getElementById('bookDetailError');
+            const header = document.getElementById('bookDetailHeader');
+            const actions = document.getElementById('bookDetailActions');
+            const chapters = document.getElementById('bookChapters');
+            if (errorBox) errorBox.innerHTML = '';
+            if (header) header.innerHTML = '<p>Loading book...</p>';
+            if (actions) actions.innerHTML = '';
+            if (chapters) chapters.innerHTML = '';
+            fetch('/books/detail/?id=' + encodeURIComponent(bookId))
+                .then(readBooksResponse)
+                .then(function (result) {
+                    const tab = document.getElementById('content-books');
+                    if (!tab || !tab.classList.contains('active')) return;
+                    const data = result.data || {};
+                    if (!result.ok || data.error) {
+                        if (header) header.innerHTML = '';
+                        showBookError(data);
+                        return;
+                    }
+                    renderBook(data);
+                })
+                .catch(function () {
+                    showBookError({ error: 'Could not load this book.' });
+                });
+        }
+
+        function renderBook(book) {
+            const header = document.getElementById('bookDetailHeader');
+            const actions = document.getElementById('bookDetailActions');
+            const list = document.getElementById('bookChapters');
+            if (!header || !actions || !list) return;
+            const authors = (book.authors || []).join(', ') || 'Unknown author';
+            const narrators = (book.narrators || []).join(', ');
+            const image = book.image || 'https://via.placeholder.com/200?text=Book';
+            let meta = escapeHtml(authors);
+            if (narrators) meta += '<br>Narrated by ' + escapeHtml(narrators);
+            if (book.publisher) meta += '<br>' + escapeHtml(book.publisher);
+            if (book.edition) meta += '<br>' + escapeHtml(book.edition);
+            if (book.total_chapters) meta += '<br>' + book.total_chapters + ' chapters';
+            if (book.explicit) meta += '<br>Explicit';
+            const description = book.description
+                ? '<p class="book-description">' + escapeHtml(book.description) + '</p>'
+                : '';
+            header.innerHTML =
+                '<img src="' + escapeHtml(image) + '" alt="" class="playlist-detail-image">' +
+                '<div class="playlist-detail-info">' +
+                '<h2>' + escapeHtml(book.name) + '</h2>' +
+                description +
+                '<p>' + meta + '</p>' +
+                '</div>';
+            actions.innerHTML =
+                '<button type="button" class="btn" data-save-book="' + escapeHtml(book.id) + '">Save</button>' +
+                '<button type="button" class="btn" data-remove-book="' + escapeHtml(book.id) + '">Remove</button>';
+            const chapters = book.chapters || [];
+            if (!chapters.length) {
+                list.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No chapters.</div>';
+                return;
+            }
+            let note = '';
+            if (typeof book.chapters_total === 'number' && book.chapters_total > chapters.length) {
+                note = '<div class="books-note">Showing ' + chapters.length + ' of ' + book.chapters_total + ' chapters.</div>';
+            }
+            list.innerHTML = note + chapters.map(function (chapter) {
+                const kind = chapterPlayKind(chapter.uri);
+                const label = chapter.chapter_number ? chapter.chapter_number + '. ' : '';
+                const side = kind ? formatBookDuration(chapter.duration_ms) : 'Unavailable';
+                const playable = kind
+                    ? ' data-chapter-uri="' + escapeHtml(chapter.uri) + '"'
+                    : ' style="opacity:0.55;cursor:default;"';
+                return '<div class="track-item"' + playable + '>' +
+                    '<div class="track-info"><div class="track-name">' + escapeHtml(label + (chapter.name || 'Chapter')) + '</div></div>' +
+                    '<div class="track-duration">' + escapeHtml(side) + '</div>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function playChapter(uri) {
+            const errorBox = document.getElementById('bookDetailError');
+            if (errorBox) errorBox.innerHTML = '';
+            const params = new URLSearchParams({ uri: uri });
+            if (useWebPlayer && deviceId) params.set('device_id', deviceId);
+            fetch('/books/play-chapter/?' + params.toString(), { method: 'POST' })
+                .then(readBooksResponse)
+                .then(function (result) {
+                    const data = result.data || {};
+                    if (!result.ok || data.error) {
+                        showBookError(data);
+                        return;
+                    }
+                    if (errorBox) errorBox.textContent = 'Playing chapter...';
+                    const status = document.getElementById('statusIndicator');
+                    if (status) status.textContent = 'Playing chapter...';
+                })
+                .catch(function () {
+                    showBookError({ error: 'Playback did not start.' });
+                });
+        }
+
+        function postBook(url, successText) {
+            fetch(url, { method: 'POST' })
+                .then(readBooksResponse)
+                .then(function (result) {
+                    const data = result.data || {};
+                    if (!result.ok || data.error) {
+                        showBookError(data);
+                        return;
+                    }
+                    const errorBox = document.getElementById('bookDetailError');
+                    if (errorBox) errorBox.textContent = successText;
+                    const status = document.getElementById('statusIndicator');
+                    if (status) status.textContent = successText;
+                })
+                .catch(function () {
+                    showBookError({ error: 'Could not update your library.' });
+                });
+        }
+
+        function saveBook(bookId) {
+            postBook('/books/save/?id=' + encodeURIComponent(bookId), 'Saved to your library.');
+        }
+
+        function removeBook(bookId) {
+            postBook('/books/remove/?id=' + encodeURIComponent(bookId), 'Removed from your library.');
+        }
+
+        function bindBooks() {
+            const root = document.getElementById('content-books');
+            if (!root || root.dataset.bound === '1') return;
+            root.dataset.bound = '1';
+            root.addEventListener('click', function (event) {
+                const play = event.target.closest('[data-chapter-uri]');
+                if (play) {
+                    playChapter(play.getAttribute('data-chapter-uri'));
+                    return;
+                }
+                const save = event.target.closest('[data-save-book]');
+                if (save) {
+                    saveBook(save.getAttribute('data-save-book'));
+                    return;
+                }
+                const remove = event.target.closest('[data-remove-book]');
+                if (remove) {
+                    removeBook(remove.getAttribute('data-remove-book'));
+                    return;
+                }
+                const card = event.target.closest('[data-book-id]');
+                if (card) viewBook(card.getAttribute('data-book-id'));
+            });
         }
 
         let feelActive = false;
@@ -2473,6 +2758,8 @@
                     });
             }
         }
+
+        bindBooks();
 
         // Load playlists when page loads
         window.addEventListener('load', () => {
