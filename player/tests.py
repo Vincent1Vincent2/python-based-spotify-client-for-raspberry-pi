@@ -1289,3 +1289,19 @@ class FocusRingTests(TestCase):
         self.assertEqual(links, [
             '<link rel="stylesheet" href="/static/player/css/focus.css">',
         ])
+
+
+class MediaSessionTests(TestCase):
+    def test_player_page_includes_media_session_script_once(self):
+        from django.template.loader import render_to_string
+
+        html = render_to_string("player/index.html", {
+            "client_id": "client",
+            "access_token": "token",
+            "use_web_player": True,
+            "devices": [],
+            "accounts": [],
+            "active_account": None,
+            "selected_device_id": None,
+        })
+        self.assertEqual(html.count("media-session.js"), 1)
