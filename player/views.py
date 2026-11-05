@@ -12,6 +12,11 @@ from .spotify_api import (
 )
 from .feel import FeelError, FeelScopeError
 from .feel_radio import advance_feel_radio, feel_status, start_feel_radio, stop_feel_radio
+from .features.listening_stats.stats import (
+    ListeningStatsError,
+    ListeningStatsScopeError,
+    load_listening_stats,
+)
 from .models import SpotifyAccount
 
 
@@ -19,7 +24,7 @@ SPOTIFY_SCOPE = (
     'user-modify-playback-state user-read-playback-state '
     'user-read-currently-playing user-read-playback-position streaming '
     'playlist-read-private playlist-read-collaborative '
-    'playlist-modify-private user-library-read user-library-modify user-follow-modify user-follow-read'
+    'playlist-modify-private user-library-read user-library-modify user-follow-modify user-follow-read user-read-recently-played'
 )
 
 
@@ -114,6 +119,8 @@ def login_view(request):
     Already-linked accounts can be reactivated without OAuth. auth=1
     always starts authorization, including when a session is already
     active, so a missing scope can be granted and another account
+    always starts authorization, including when a session already
+    exists, so a missing scope can be granted and another account
     can be linked.
     """
     if request.GET.get('auth') == '1':
@@ -121,6 +128,7 @@ def login_view(request):
         auth_url = api.get_authorization_url(SPOTIFY_SCOPE)
         return redirect(auth_url)
 
+    # If already authenticated, redirect to index
     sp = get_spotify_client(request)
     if sp:
         return redirect('index')
@@ -1474,3 +1482,21 @@ def feel_stop_view(request):
     if not account:
         return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
     return JsonResponse(stop_feel_radio(account))
+
+
+@require_http_methods(["GET"])
+def listening_stats_view(request):
+    """
+    Listening stats from one Spotify read:
+    GET /me/player/recently-played?limit=50.
+    """
+    api = get_spotify_api(request)
+    if not api:
+        return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
+    try:
+        stats = load_listening_stats(api)
+    except ListeningStatsScopeError as exc:
+        return JsonResponse({'error': str(exc), 'code': exc.code}, status=403)
+    except ListeningStatsError as exc:
+        return JsonResponse({'error': str(exc), 'code': exc.code}, status=400)
+    return JsonResponse(stats)

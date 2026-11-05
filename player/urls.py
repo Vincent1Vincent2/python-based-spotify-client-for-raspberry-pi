@@ -62,6 +62,7 @@ urlpatterns = [
     path('features/artist-pages/', include('player.features.artist_pages.urls')),
     path('song-radio/', include('player.features.song_radio.urls')),
     path('playlist-editor/', include('player.features.playlist_editor.urls')),
+    path('stats/', views.listening_stats_view, name='listening_stats'),
     path('settings/', views.settings_view, name='settings'),
     path('settings/audio/', views.update_audio_settings, name='update_audio_settings'),
     path('settings/reboot/', views.reboot_system, name='reboot_system'),

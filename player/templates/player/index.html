@@ -251,6 +251,7 @@
                     <button class="tab-button" onclick="switchTab('playlist-editor')" id="tab-playlist-editor">Playlists editor</button>
                     <button class="tab-button" onclick="switchTab('books')" id="tab-books">Books</button>
                     <button class="tab-button" onclick="switchTab('queue')" id="tab-queue">Queue</button>
+                    <button class="tab-button" onclick="switchTab('stats')" id="tab-stats">Stats</button>
                 </div>
 
                 <div class="tab-content active" id="content-playlists">
@@ -418,6 +419,21 @@
                     </div>
                 </div>
                 {% include "queue_panel/tab.html" %}
+                <div class="tab-content" id="content-stats">
+                    <div class="stats-section" id="statsSection">
+                        <div class="section-header">
+                            <h3>Listening stats</h3>
+                            <button class="btn" type="button" onclick="loadListeningStats()">Refresh</button>
+                        </div>
+                        <p class="stats-note">
+                            The last 50 plays, from one Spotify read. Minutes, top artists,
+                            top tracks, and how many different artists.
+                        </p>
+                        <div id="statsContent">
+                            <div class="stats-placeholder">Open this tab to load stats.</div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="playlist-detail-view" id="playlistDetailView">
@@ -1903,6 +1919,8 @@
                 loadDiscover(true);
             } else if (tabName === 'recent') {
                 loadRecent();
+            } else if (tabName === 'stats') {
+                loadListeningStats();
             }
         }
 
@@ -2470,6 +2488,69 @@
                 })
                 .catch(function () {
                     status.textContent = 'Feel radio did not start.';
+                });
+        }
+
+        function renderStatBars(rows, labelFor) {
+            if (!rows || !rows.length) {
+                return '<p class="stats-empty">Nothing in the last 50 plays.</p>';
+            }
+            return rows.map(function (row) {
+                const width = Math.max(0, Math.min(100, Number(row.percent) || 0));
+                const plays = Number(row.plays) || 0;
+                const playLabel = plays === 1 ? '1 play' : plays + ' plays';
+                return '<div class="stats-row">' +
+                    '<div class="stats-row-label"><span>' + escapeHtml(labelFor(row)) + '</span><span>' + playLabel + '</span></div>' +
+                    '<div class="stats-bar-track"><div class="stats-bar" style="width: ' + width + '%"></div></div>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function renderListeningStats(data) {
+            const minutes = Number(data.total_minutes) || 0;
+            const artists = Number(data.distinct_artists) || 0;
+            const minuteLabel = minutes === 1 ? 'minute' : 'minutes';
+            const artistLabel = artists === 1 ? 'artist' : 'artists';
+            let html = '<div class="stats-summary">' +
+                '<div class="stats-figure"><strong>' + minutes + '</strong><span>' + minuteLabel + '</span></div>' +
+                '<div class="stats-figure"><strong>' + artists + '</strong><span>' + artistLabel + '</span></div>' +
+                '</div>';
+            html += '<div class="stats-group"><h4>Top artists</h4>' + renderStatBars(data.top_artists, function (row) {
+                return row.name;
+            }) + '</div>';
+            html += '<div class="stats-group"><h4>Top tracks</h4>' + renderStatBars(data.top_tracks, function (row) {
+                return row.artists ? row.name + ' · ' + row.artists : row.name;
+            }) + '</div>';
+            return html;
+        }
+
+        function loadListeningStats() {
+            const box = document.getElementById('statsContent');
+            if (!box) return;
+            box.innerHTML = '<div class="stats-placeholder">Reading the last 50 plays...</div>';
+            fetch('/stats/')
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    const data = result.data || {};
+                    if (data.code === 'needs_scope') {
+                        const message = escapeHtml(data.error || 'Spotify needs a new permission.');
+                        box.innerHTML = '<div class="stats-error">' + message +
+                            ' <a href="/login/?auth=1">Reconnect Spotify</a></div>';
+                        return;
+                    }
+                    if (!result.ok || data.error) {
+                        box.innerHTML = '<div class="stats-error">' +
+                            escapeHtml(data.error || 'Could not load listening stats.') + '</div>';
+                        return;
+                    }
+                    box.innerHTML = renderListeningStats(data);
+                })
+                .catch(function () {
+                    box.innerHTML = '<div class="stats-error">Could not load listening stats.</div>';
                 });
         }
 

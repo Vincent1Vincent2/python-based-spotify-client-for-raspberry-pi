@@ -1115,3 +1115,65 @@ body {
     white-space: pre-wrap;
 }
     
+.stats-note,
+.stats-placeholder,
+.stats-empty,
+.stats-error {
+    line-height: 1.45;
+}
+
+.stats-summary {
+    display: flex;
+    gap: 12px;
+    margin: 18px 0 8px;
+}
+
+.stats-figure {
+    flex: 1;
+    border: var(--border-width) solid var(--color-border);
+    padding: 14px 16px;
+}
+
+.stats-figure strong {
+    display: block;
+    font-size: 1.8rem;
+    line-height: 1.1;
+}
+
+.stats-figure span,
+.stats-empty,
+.stats-placeholder {
+    color: var(--color-gray);
+}
+
+.stats-group h4 {
+    margin: 22px 0 12px;
+    font-size: 1.05rem;
+}
+
+.stats-row {
+    margin-bottom: 12px;
+}
+
+.stats-row-label {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+
+.stats-bar-track {
+    height: 14px;
+    background: var(--color-gray-light);
+    border: var(--border-width) solid var(--color-border);
+}
+
+.stats-bar {
+    height: 100%;
+    background: var(--color-text);
+    width: 0;
+}
+
+.stats-error a {
+    color: var(--color-text);
+}
