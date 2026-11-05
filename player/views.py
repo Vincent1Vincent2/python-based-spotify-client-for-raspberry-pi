@@ -111,6 +111,10 @@ def login_view(request):
     """
     Show login page or initiate Spotify OAuth login.
 
+    Already-linked accounts can be reactivated without OAuth. auth=1
+    always starts authorization, including when a session is already
+    active, so a missing scope can be granted and another account
+    can be linked.
     auth=1 always starts OAuth, including when a session is already
     active, so a 403 needs_scope response can send the player to
     /login/?auth=1 and grant user-read-recently-played. Without that

@@ -46,6 +46,7 @@ urlpatterns = [
     path('feel/start/', views.feel_start_view, name='feel_start'),
     path('feel/advance/', views.feel_advance_view, name='feel_advance'),
     path('feel/stop/', views.feel_stop_view, name='feel_stop'),
+    path('', include('player.features.recently_played.urls')),
     path('home/', library_home.home, name='library_home'),
     path('settings/', views.settings_view, name='settings'),
     path('settings/audio/', views.update_audio_settings, name='update_audio_settings'),
