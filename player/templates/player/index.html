@@ -515,6 +515,36 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="tab-content" id="content-feel">
+                    <div class="feel-section" id="feelSection">
+                        <div class="section-header">
+                            <h3>Feel radio</h3>
+                        </div>
+                        <p class="feel-note">
+                            Pick sad, happy, mad, or a combination. Two Spotify reads
+                            chain 30 songs from the playlist whose name matches that feel
+                            (or from saved songs). The name stays put — Sad Mad 01, Sad Mad 02 —
+                            and one search, built from the song that is ending, keeps it going.
+                        </p>
+                        <div class="feel-emotions" id="feelEmotions">
+                            <button type="button" class="feel-emotion" data-emotion="sad" aria-pressed="false">Sad</button>
+                            <button type="button" class="feel-emotion" data-emotion="happy" aria-pressed="false">Happy</button>
+                            <button type="button" class="feel-emotion" data-emotion="mad" aria-pressed="false">Mad</button>
+                        </div>
+                        <p class="feel-combo" id="feelCombo">Select a feel. Combine two, or all three.</p>
+                        <label class="feel-forever">
+                            <input type="checkbox" id="feelForever" checked>
+                            Keep going after the last song
+                        </label>
+                        <div class="feel-actions">
+                            <button class="btn" id="feelStart" type="button" onclick="startFeelRadio()">Start radio</button>
+                            <button class="btn" id="feelStop" type="button" onclick="stopFeelRadio()" style="display: none;">Stop radio</button>
+                        </div>
+                        <div id="feelStatus"></div>
+                        <div id="feelTracks"></div>
+                    </div>
+                </div>
             </div>
                 <div class="tab-content" id="content-rotation">
                     <div class="rotation-section" id="rotationSection">
