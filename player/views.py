@@ -4,7 +4,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.conf import settings
 import json
-import random
+import re
 import requests
 from .spotify_api import (
     SpotifyAPI, get_spotify_api, capture_playback_snapshot, transfer_with_resume,
@@ -1046,12 +1046,334 @@ def reboot_system(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+_DISCOVER_QUERY_LIMIT = 100
+_DISCOVER_WORD = re.compile(r"[a-z0-9']+")
+_DISCOVER_STOP = {
+    'the', 'and', 'for', 'with', 'you', 'your', 'that', 'this', 'from',
+    'are', 'was', 'were', 'have', 'has', 'not', 'but', 'its', "it's",
+    'a', 'an', 'of', 'to', 'in', 'on', 'my', 'me', 'we', 'our', 'it',
+    'just', 'like', 'what', 'when', 'all', 'out',
+}
+
+
+def _discover_words(text):
+    words = []
+    for word in _DISCOVER_WORD.findall((text or '').lower()):
+        if len(word) < 3 or word in _DISCOVER_STOP or word in words:
+            continue
+        words.append(word)
+    return words
+
+
+def _search_piece(part):
+    cleaned = ' '.join((part or '').replace('"', '').split())
+    if not cleaned:
+        return ''
+    if ' ' in cleaned or ':' in cleaned:
+        return f'"{cleaned}"'
+    return cleaned
+
+
+def _discover_query(tracks):
+    """Search text from the most-played artist, then title words."""
+    counts = {}
+    labels = {}
+    order = []
+    word_counts = {}
+    word_order = []
+    for track in tracks:
+        seen = set()
+        for artist in track.get('artists') or []:
+            if isinstance(artist, dict):
+                name = (artist.get('name') or '').strip()
+            elif isinstance(artist, str):
+                name = artist.strip()
+            else:
+                name = ''
+            if not name:
+                continue
+            key = name.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            if key not in counts:
+                order.append(key)
+                labels[key] = name
+                counts[key] = 0
+            counts[key] += 1
+        for word in _discover_words(track.get('name')):
+            if word not in word_counts:
+                word_order.append(word)
+                word_counts[word] = 0
+            word_counts[word] += 1
+
+    parts = []
+    blocked = set()
+    if order:
+        top = max(order, key=lambda key: (counts[key], -order.index(key)))
+        parts.append(labels[top])
+        blocked = set(_discover_words(labels[top]))
+        blocked.add(labels[top].casefold())
+
+    ranked = sorted(
+        word_order,
+        key=lambda word: (-word_counts[word], word_order.index(word)),
+    )
+    for word in ranked:
+        if word in blocked:
+            continue
+        parts.append(word)
+        if len(parts) >= 4:
+            break
+
+    query = ''
+    for part in parts:
+        piece = _search_piece(part)
+        if not piece:
+            continue
+        if len(piece) > _DISCOVER_QUERY_LIMIT:
+            piece = piece.replace('"', '')[:_DISCOVER_QUERY_LIMIT]
+        candidate = piece if not query else f'{query} OR {piece}'
+        if len(candidate) > _DISCOVER_QUERY_LIMIT:
+            continue
+        query = candidate
+    if query:
+        return query
+    for track in tracks:
+        piece = _search_piece(track.get('name') or '')
+        if piece:
+            return piece[:_DISCOVER_QUERY_LIMIT]
+    return ''
+
+
+def _image_url(images):
+    if not isinstance(images, list) or not images:
+        return None
+    first = images[0]
+    if isinstance(first, str):
+        return first or None
+    if isinstance(first, dict):
+        return first.get('url') or None
+    return None
+
+
+def _names(artists):
+    if isinstance(artists, str):
+        text = artists.strip()
+        return [text] if text else []
+    if not isinstance(artists, list):
+        return []
+    names = []
+    for artist in artists:
+        if isinstance(artist, str):
+            text = artist.strip()
+        elif isinstance(artist, dict):
+            text = (artist.get('name') or '').strip()
+        else:
+            text = ''
+        if text:
+            names.append(text)
+    return names
+
+
+def _album_name(album):
+    if isinstance(album, dict):
+        return album.get('name') or ''
+    if isinstance(album, str):
+        return album
+    return ''
+
+
+def _duration_ms(raw):
+    try:
+        return int(raw.get('duration_ms') or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _is_catalog_track(raw):
+    if not isinstance(raw, dict) or raw.get('is_local'):
+        return False
+    if raw.get('type') not in (None, 'track'):
+        return False
+    return bool(raw.get('id'))
+
+
+def _paging_items(payload):
+    if not isinstance(payload, dict):
+        return []
+    items = payload.get('items')
+    if not isinstance(items, list):
+        return []
+    return [item for item in items if isinstance(item, dict)]
+
+
+def _section_items(payload, key):
+    section = payload.get(key) if isinstance(payload, dict) else None
+    if not isinstance(section, dict):
+        return []
+    return _paging_items(section)
+
+
+def _recent_tracks(payload):
+    tracks = []
+    for item in _paging_items(payload):
+        raw = item.get('track')
+        if _is_catalog_track(raw):
+            tracks.append(raw)
+    return tracks
+
+
+def _saved_tracks(payload):
+    tracks = []
+    for item in _paging_items(payload):
+        raw = item.get('track') if isinstance(item.get('track'), dict) else item
+        if _is_catalog_track(raw):
+            tracks.append(raw)
+    return tracks
+
+
+def _track_card(raw):
+    if not _is_catalog_track(raw):
+        return None
+    album = raw.get('album') if isinstance(raw.get('album'), dict) else {}
+    track_id = raw['id']
+    return {
+        'id': track_id,
+        'name': raw.get('name') or '',
+        'artists': _names(raw.get('artists')),
+        'album': _album_name(raw.get('album')),
+        'image': _image_url(album.get('images')),
+        'duration_ms': _duration_ms(raw),
+        'uri': raw.get('uri') or f'spotify:track:{track_id}',
+        'type': 'track',
+        'preview_url': raw.get('preview_url'),
+    }
+
+
+def _album_card(album):
+    if not isinstance(album, dict) or not album.get('id'):
+        return None
+    if album.get('type') not in (None, 'album'):
+        return None
+    total = album.get('total_tracks')
+    if not isinstance(total, int):
+        total = 0
+    return {
+        'id': album['id'],
+        'name': album.get('name') or '',
+        'artists': _names(album.get('artists')),
+        'image': _image_url(album.get('images')),
+        'release_date': album.get('release_date') or '',
+        'total_tracks': total,
+        'type': 'album',
+    }
+
+
+def _playlist_card(playlist):
+    if not isinstance(playlist, dict) or not playlist.get('id'):
+        return None
+    if playlist.get('type') not in (None, 'playlist'):
+        return None
+    owner = playlist.get('owner') if isinstance(playlist.get('owner'), dict) else {}
+    tracks = playlist.get('tracks') if isinstance(playlist.get('tracks'), dict) else {}
+    total = tracks.get('total')
+    if not isinstance(total, int):
+        total = 0
+    return {
+        'id': playlist['id'],
+        'name': playlist.get('name') or '',
+        'description': playlist.get('description') or '',
+        'image': _image_url(playlist.get('images')),
+        'tracks_count': total,
+        'owner': owner.get('display_name') or owner.get('id') or '',
+        'type': 'playlist',
+    }
+
+
+def _assemble_discover(tracks, albums, playlists):
+    playlist_cards = []
+    seen_playlists = set()
+    for raw in playlists:
+        card = _playlist_card(raw)
+        if not card or card['id'] in seen_playlists:
+            continue
+        seen_playlists.add(card['id'])
+        playlist_cards.append(card)
+
+    album_cards = []
+    seen_albums = set()
+
+    def add_album(raw):
+        card = _album_card(raw)
+        if not card or card['id'] in seen_albums:
+            return
+        seen_albums.add(card['id'])
+        album_cards.append(card)
+
+    for raw in albums:
+        add_album(raw)
+
+    track_cards = []
+    seen_tracks = set()
+    for raw in tracks:
+        card = _track_card(raw)
+        if not card or card['id'] in seen_tracks:
+            continue
+        seen_tracks.add(card['id'])
+        track_cards.append(card)
+        if isinstance(raw, dict):
+            add_album(raw.get('album'))
+
+    return {
+        'playlists': playlist_cards[:15],
+        'albums': album_cards[:15],
+        'tracks': track_cards[:20],
+    }
+
+
+def _cards_from_search(payload):
+    return _assemble_discover(
+        _section_items(payload, 'tracks'),
+        _section_items(payload, 'albums'),
+        _section_items(payload, 'playlists'),
+    )
+
+
+def _discover_payload(read):
+    """
+    One Discover refresh, two Spotify reads.
+
+    1. GET /me/player/recently-played?limit=10
+    2. Search (limit 10) from the top artist or title words of those plays.
+       When that history is empty, GET /me/tracks?limit=20 instead.
+    """
+    recent = read('me/player/recently-played', {'limit': 10})
+    played = _recent_tracks(recent)
+    query = _discover_query(played) if played else ''
+    if query:
+        found = read('search', {
+            'q': query,
+            'type': 'track,album,playlist',
+            'limit': 10,
+        })
+        return _cards_from_search(found)
+    saved = read('me/tracks', {'limit': 20})
+    return _assemble_discover(_saved_tracks(saved), [], [])
+
+
 def discover(request):
-    """Get random discover content - playlists, albums, and tracks."""
+    """Discover playlists, albums, and tracks from recent listening."""
     sp = get_spotify_client(request)
     if not sp:
         return JsonResponse({'error': 'Not authenticated', 'code': 'token_expired'}, status=401)
-    
+
+    def read(endpoint, params):
+        response = sp.get(endpoint, params=params)
+        response.raise_for_status()
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {}
+
     try:
         discover_data = {
             'playlists': [],
@@ -1173,6 +1495,7 @@ def discover(request):
         discover_data['tracks'] = discover_data['tracks'][:20]
         
         return JsonResponse(discover_data)
+        return JsonResponse(_discover_payload(read))
     except Exception as e:
         import traceback
         return JsonResponse({'error': str(e), 'traceback': traceback.format_exc()}, status=400)
