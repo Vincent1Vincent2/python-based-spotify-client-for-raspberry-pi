@@ -497,3 +497,40 @@ class AlbumCardTests(TestCase):
         self.assertIn("function displayAlbums", body)
         self.assertIn('class="playlist-item"', body)
         self.assertNotIn("playlist-cards.css", body)
+
+    def test_index_contains_states_js(self):
+        import time
+        from unittest.mock import patch
+
+        account = SpotifyAccount.objects.create(
+            spotify_user_id="states-user",
+            display_name="States",
+            access_token="access",
+            refresh_token="refresh",
+            token_expires_at=time.time() + 3600,
+        )
+        client = Client()
+        session = client.session
+        session["active_account_id"] = account.id
+        session["use_web_player"] = True
+        session.save()
+
+        with patch("player.spotify_api.SpotifyAPI.get_devices", return_value=FakeResponse({"devices": []})), \
+                patch("player.spotify_api.SpotifyAPI.get_current_playback", return_value=FakeResponse({}, status=204)):
+            page = client.get("/")
+        self.assertEqual(page.status_code, 200)
+        body = page.content.decode()
+        self.assertEqual(body.count("player/js/states.js"), 1)
+        self.assertEqual(body.count("player/css/states.css"), 1)
+        self.assertIn("renderState(document.getElementById('playlistsGrid'), 'loading', 'Loading playlists...')", body)
+        self.assertIn("renderState(document.getElementById('albumsGrid'), 'loading', 'Loading albums...')", body)
+        self.assertIn("renderState(document.getElementById('songsList'), 'loading', 'Loading songs...')", body)
+        self.assertIn("renderState(document.getElementById('discoverContent'), 'loading', 'Loading discoveries...')", body)
+        self.assertIn("renderState(grid, 'empty', 'No playlists found')", body)
+        self.assertIn("renderState(grid, 'empty', 'No albums found')", body)
+        self.assertIn("renderState(list, 'empty', 'No saved songs found')", body)
+        self.assertIn("renderState(contentDiv, 'empty', 'No discoveries found')", body)
+        self.assertNotIn("playlistsGrid').innerHTML =", body)
+        self.assertNotIn("albumsGrid').innerHTML =", body)
+        self.assertNotIn("songsList').innerHTML =", body)
+
