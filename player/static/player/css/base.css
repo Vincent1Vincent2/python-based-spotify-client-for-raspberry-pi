@@ -1,4 +1,4 @@
-/* Base Reset - Common styles for all pages */
+/* Base reset shared by the player and login screens. */
 
 * {
     margin: 0;
@@ -6,3 +6,25 @@
     box-sizing: border-box;
 }
 
+html {
+    background: var(--color-bg, #121212);
+    color: var(--color-text, #f4f4f2);
+}
+
+body {
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+    font-family: inherit;
+}
+
+:focus-visible {
+    outline: 2px solid var(--color-text, #f4f4f2);
+    outline-offset: 2px;
+}

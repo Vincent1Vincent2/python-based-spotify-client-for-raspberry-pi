@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spotify Client</title>
+    <title>SpotiPi</title>
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
     {% load static %}
     <link rel="stylesheet" href="{% static 'player/css/player.css' %}">
@@ -153,17 +153,18 @@
     </style>
 </head>
 
-<body>
+<body class="player-app">
     <div class="container">
         <div class="header">
-            <h1>Spotify Client</h1>
+            <h1>SpotiPi</h1>
             <div class="header-buttons">
                 <a href="{% url 'settings' %}" class="settings-btn">Settings</a>
                 <a href="{% url 'logout' %}" class="logout-btn">Logout</a>
             </div>
         </div>
 
-        <div class="player-card">
+        <div class="player-card shell">
+            <div class="stage-column">
             <div class="player-status" id="playerStatus">Initializing player...</div>
 
             <div class="track-info" id="trackInfo">
@@ -186,6 +187,7 @@
             </div>
 
             <div class="controls" style="flex-wrap: wrap;">
+            <div class="controls">
                 <button class="btn btn-previous" id="prevBtn" onclick="previousTrack()" disabled>⏮ Previous</button>
                 <button class="btn btn-play" id="playBtn" onclick="togglePlayback()" disabled>▶ Play</button>
                 <button class="btn btn-next" id="nextBtn" onclick="nextTrack()" disabled>⏭ Next</button>
@@ -197,6 +199,19 @@
 
             {% include "song_radio/button.html" %}
             {% include "player/features/sleep_timer/timer.html" %}
+            <div class="playback-refresh">
+                <button class="btn" onclick="checkCurrentPlayback()">Refresh Playback Info</button>
+            </div>
+
+            <div class="search-section">
+                <div class="search-box">
+                    <input type="text" class="search-input" id="searchInput"
+                        placeholder="Search songs, albums, artists, playlists..."
+                        onkeypress="handleSearchKeyPress(event)">
+                    <button class="btn" onclick="searchTracks()">Search</button>
+                </div>
+                <div class="search-results" id="searchResults"></div>
+            </div>
 
             <div class="device-selector">
                 <h3>Select Playback Device</h3>
@@ -225,17 +240,9 @@
                     {% endfor %}
                 </div>
             </div>
-
-            <div class="search-section">
-                <div class="search-box">
-                    <input type="text" class="search-input" id="searchInput"
-                        placeholder="Search songs, albums, artists, playlists..."
-                        onkeypress="handleSearchKeyPress(event)">
-                    <button class="btn" onclick="searchTracks()">Search</button>
-                </div>
-                <div class="search-results" id="searchResults"></div>
             </div>
 
+            <div class="library-column">
             <div class="tabs-container">
                 <div class="tabs-nav">
                     <button class="tab-button active" onclick="switchTab('playlists')"
@@ -434,6 +441,7 @@
                         </div>
                     </div>
                 </div>
+            </div>
             </div>
 
             <div class="playlist-detail-view" id="playlistDetailView">
@@ -1072,7 +1080,7 @@
 
             if (tracks.length > 0) {
                 html += '<div class="discover-section-group">';
-                html += '<div class="discover-section-title">🎵 Songs</div>';
+                html += '<div class="discover-section-title">Songs</div>';
                 html += tracks.map(track => `
                     <div class="search-result-item" onclick="playTrack('${track.id}')">
                         <img src="${track.image || ''}" alt="Album cover" class="result-image">
@@ -1087,7 +1095,7 @@
 
             if (albums.length > 0) {
                 html += '<div class="discover-section-group">';
-                html += '<div class="discover-section-title">💿 Albums & Singles</div>';
+                html += '<div class="discover-section-title">Albums & Singles</div>';
                 html += '<div class="discover-grid">';
                 html += albums.map(album => `
                     <div class="discover-item" onclick="viewAlbum('${album.id}')">
@@ -1101,7 +1109,7 @@
 
             if (playlists.length > 0) {
                 html += '<div class="discover-section-group">';
-                html += '<div class="discover-section-title">📃 Playlists</div>';
+                html += '<div class="discover-section-title">Playlists</div>';
                 html += '<div class="discover-grid">';
                 html += playlists.map(playlist => `
                     <div class="discover-item" onclick="viewPlaylist('${playlist.id}')">
@@ -1115,7 +1123,7 @@
 
             if (artists.length > 0) {
                 html += '<div class="discover-section-group">';
-                html += '<div class="discover-section-title">🎤 Artists</div>';
+                html += '<div class="discover-section-title">Artists</div>';
                 html += '<div class="discover-grid">';
                 html += artists.map(artist => `
                     <a class="discover-item" href="/features/artist-pages/?id=${encodeURIComponent(artist.id)}" style="display:block;color:inherit;text-decoration:none;">
@@ -2737,7 +2745,7 @@
             // Display Playlists
             if (data.playlists && data.playlists.length > 0) {
                 html += '<div class="discover-section-group">';
-                html += '<div class="discover-section-title">🎵 Discover Playlists</div>';
+                html += '<div class="discover-section-title">Discover Playlists</div>';
                 html += '<div class="discover-grid">';
                 data.playlists.forEach(item => {
                     html += `
@@ -2771,7 +2779,7 @@
             // Display Tracks
             if (data.tracks && data.tracks.length > 0) {
                 html += '<div class="discover-section-group">';
-                html += '<div class="discover-section-title">🎧 Discover Tracks</div>';
+                html += '<div class="discover-section-title">Discover Tracks</div>';
                 html += '<div class="discover-list">';
                 data.tracks.forEach(track => {
                     const duration = Math.floor(track.duration_ms / 1000);
@@ -2791,6 +2799,8 @@
                                     <div class="track-actions-col">
                                         <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" data-album-id="${track.album_id || ''}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
                                         <div style="color: #1a1a1a; font-size: 0.85rem;">${durationStr}</div>
+                                        <button class="track-menu-btn" data-track-id="${track.id}" data-track-name="${escapeAttr(track.name)}" onclick="event.stopPropagation(); openTrackMenu(event, this)">⋮</button>
+                                        <div class="track-duration">${durationStr}</div>
                                     </div>
                                 </div>
                             </div>
