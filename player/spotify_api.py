@@ -412,6 +412,24 @@ class SpotifyAPI:
         """
         params = {'limit': limit, 'offset': offset}
         return self.get('me/tracks', params=params)
+
+    def library_contains(self, uris):
+        """One GET /me/library/contains?uris= for tracks and albums."""
+        if isinstance(uris, (list, tuple)):
+            uris = ','.join(uris)
+        return self.get('me/library/contains', params={'uris': uris})
+
+    def save_library_items(self, uris):
+        """PUT /me/library?uris= to save tracks or albums."""
+        if isinstance(uris, (list, tuple)):
+            uris = ','.join(uris)
+        return self.put('me/library', params={'uris': uris})
+
+    def remove_library_items(self, uris):
+        """DELETE /me/library?uris= to remove tracks or albums."""
+        if isinstance(uris, (list, tuple)):
+            uris = ','.join(uris)
+        return self.delete('me/library', params={'uris': uris})
     
     def get_categories(self, limit=50, offset=0):
         """

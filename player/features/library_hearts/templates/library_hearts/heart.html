@@ -1,0 +1,475 @@
+<style>
+    .library-hearts {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: -10px 0 20px;
+    }
+
+    .library-heart {
+        background: var(--color-bg);
+        border: var(--border-width) solid var(--color-border);
+        color: var(--color-text);
+        border-radius: var(--border-radius);
+        padding: 8px 14px;
+        font: inherit;
+        font-size: 0.95rem;
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+    .library-heart.is-saved,
+    .library-heart:hover {
+        background: var(--color-text);
+        color: var(--color-bg);
+    }
+
+    .library-heart:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .library-heart-inline {
+        background: transparent;
+        border: none;
+        color: inherit;
+        padding: 4px 8px;
+        font-size: 1.15rem;
+        line-height: 1;
+    }
+
+    .library-heart-inline:hover,
+    .library-heart-inline.is-saved {
+        background: transparent;
+        color: inherit;
+    }
+
+    .library-heart-inline .library-heart-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .library-heart-note {
+        text-align: center;
+        margin: -8px 0 16px;
+    }
+
+    .library-heart-note a {
+        color: inherit;
+    }
+
+    .library-heart-rows {
+        margin: 0 0 20px;
+    }
+
+    .library-heart-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: var(--border-width) solid var(--color-border);
+    }
+
+    .library-heart-row .track-info {
+        text-align: left;
+        margin: 0;
+    }
+
+    .library-heart-row .track-name {
+        font-size: 1rem;
+        margin-bottom: 2px;
+    }
+</style>
+<div class="library-hearts" id="libraryHearts"
+    data-contains-url="{% url 'library_contains' %}"
+    data-items-url="{% url 'library_items' %}">
+    <button type="button" class="library-heart" id="libraryHeartTrack" data-kind="track" aria-pressed="false" aria-label="Save to Liked Songs" hidden>
+        <span class="library-heart-icon" aria-hidden="true">♡</span>
+        <span class="library-heart-label">Save</span>
+    </button>
+    <button type="button" class="library-heart" id="libraryHeartAlbum" data-kind="album" aria-pressed="false" aria-label="Save album" hidden>
+        <span class="library-heart-icon" aria-hidden="true">♡</span>
+        <span class="library-heart-label">Save album</span>
+    </button>
+</div>
+<p id="libraryHeartNote" class="library-heart-note" hidden></p>
+<div id="libraryHeartRows" class="library-heart-rows" hidden></div>
+<template id="libraryHeartRowTemplate">
+    <div class="track-row library-heart-row">
+        <div class="track-info">
+            <div class="track-name"></div>
+            <div class="track-artist"></div>
+        </div>
+        <button type="button" class="library-heart" data-kind="track" aria-pressed="false" aria-label="Save to Liked Songs">
+            <span class="library-heart-icon" aria-hidden="true">♡</span>
+            <span class="library-heart-label">Save</span>
+        </button>
+    </div>
+</template>
+<script>
+(function () {
+    const root = document.getElementById('libraryHearts');
+    if (!root) return;
+    const containsUrl = root.getAttribute('data-contains-url');
+    const itemsUrl = root.getAttribute('data-items-url');
+    const generations = Object.create(null);
+    const CONTAINS_LIMIT = 40;
+    let shown = { track: '', album: '' };
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function isTrackUri(uri) {
+        return typeof uri === 'string' && /^spotify:track:[A-Za-z0-9]+$/.test(uri);
+    }
+
+    function isAlbumUri(uri) {
+        return typeof uri === 'string' && /^spotify:album:[A-Za-z0-9]+$/.test(uri);
+    }
+
+    function buttonsFor(uri) {
+        return Array.prototype.filter.call(
+            document.querySelectorAll('.library-heart[data-uri]'),
+            function (button) { return button.getAttribute('data-uri') === uri; }
+        );
+    }
+
+    function setHeartState(button, saved) {
+        const on = !!saved;
+        button.setAttribute('aria-pressed', on ? 'true' : 'false');
+        button.classList.toggle('is-saved', on);
+        const icon = button.querySelector('.library-heart-icon');
+        if (icon) icon.textContent = on ? '♥' : '♡';
+        const label = button.querySelector('.library-heart-label');
+        const album = button.getAttribute('data-kind') === 'album';
+        if (label) label.textContent = album ? (on ? 'Album saved' : 'Save album') : (on ? 'Saved' : 'Save');
+        button.setAttribute('aria-label', album
+            ? (on ? 'Remove saved album' : 'Save album')
+            : (on ? 'Remove from Liked Songs' : 'Save to Liked Songs'));
+    }
+
+    function showNote(message) {
+        const note = document.getElementById('libraryHeartNote');
+        if (!note) return;
+        note.hidden = false;
+        note.textContent = message || 'Could not update your library.';
+    }
+
+    function showScopeError(message) {
+        const note = document.getElementById('libraryHeartNote');
+        if (!note) return;
+        note.hidden = false;
+        note.innerHTML = escapeHtml(message || 'Reconnect Spotify to save songs and albums.')
+            + ' <a href="/login/?auth=1">Reconnect Spotify</a>';
+    }
+
+    function clearNote() {
+        const note = document.getElementById('libraryHeartNote');
+        if (!note) return;
+        note.hidden = true;
+        note.textContent = '';
+    }
+
+    function readJson(response) {
+        return response.json().then(function (data) {
+            return { status: response.status, data: data || {} };
+        }).catch(function () {
+            return { status: response.status, data: {} };
+        });
+    }
+
+    function bump(uri) {
+        generations[uri] = (generations[uri] || 0) + 1;
+        return generations[uri];
+    }
+
+    function sendContains(uris) {
+        const snapshot = {};
+        uris.forEach(function (uri) { snapshot[uri] = generations[uri] || 0; });
+        fetch(containsUrl + '?uris=' + encodeURIComponent(uris.join(',')))
+            .then(readJson)
+            .then(function (result) {
+                if (result.data && result.data.code === 'needs_scope') {
+                    showScopeError(result.data.error);
+                    return;
+                }
+                if (result.status >= 400 || !result.data || !result.data.uris) return;
+                result.data.uris.forEach(function (uri, index) {
+                    if ((generations[uri] || 0) !== snapshot[uri]) return;
+                    buttonsFor(uri).forEach(function (button) {
+                        setHeartState(button, !!result.data.saved[index]);
+                    });
+                });
+            })
+            .catch(function () {});
+    }
+
+    function refreshSaved(uris) {
+        const unique = [];
+        (uris || []).forEach(function (uri) {
+            if ((isTrackUri(uri) || isAlbumUri(uri)) && unique.indexOf(uri) === -1) unique.push(uri);
+        });
+        for (let start = 0; start < unique.length; start += CONTAINS_LIMIT) {
+            sendContains(unique.slice(start, start + CONTAINS_LIMIT));
+        }
+    }
+
+    function onHeartClick(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const button = event.currentTarget;
+        const uri = button.getAttribute('data-uri');
+        if (!uri || button.disabled) return;
+        const saved = button.getAttribute('aria-pressed') === 'true';
+        const method = saved ? 'DELETE' : 'PUT';
+        const generation = bump(uri);
+        buttonsFor(uri).forEach(function (item) { item.disabled = true; });
+        fetch(itemsUrl + '?uris=' + encodeURIComponent(uri), { method: method })
+            .then(readJson)
+            .then(function (result) {
+                if (generation !== generations[uri]) return;
+                if (result.data && result.data.code === 'needs_scope') {
+                    showScopeError(result.data.error);
+                    return;
+                }
+                if (result.status >= 400) {
+                    showNote((result.data && result.data.error) || 'Could not update your library.');
+                    return;
+                }
+                clearNote();
+                buttonsFor(uri).forEach(function (item) { setHeartState(item, method === 'PUT'); });
+            })
+            .catch(function () {
+                if (generation === generations[uri]) showNote('Could not update your library.');
+            })
+            .then(function () {
+                buttonsFor(uri).forEach(function (item) { item.disabled = false; });
+            });
+    }
+
+    function bindHeart(button) {
+        if (!button || button.getAttribute('data-library-bound') === '1') return;
+        button.setAttribute('data-library-bound', '1');
+        button.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+        button.addEventListener('click', onHeartClick);
+    }
+
+    function heartButton(uri, kind, inline) {
+        const template = document.getElementById('libraryHeartRowTemplate');
+        const button = template.content.querySelector('.library-heart').cloneNode(true);
+        if (inline) button.classList.add('library-heart-inline');
+        button.hidden = false;
+        button.setAttribute('data-uri', uri);
+        button.setAttribute('data-kind', kind);
+        setHeartState(button, false);
+        bindHeart(button);
+        return button;
+    }
+
+    function showNowPlaying(info) {
+        const trackButton = document.getElementById('libraryHeartTrack');
+        const albumButton = document.getElementById('libraryHeartAlbum');
+        if (!trackButton || !albumButton) return;
+        const trackUri = info && info.type !== 'episode' && isTrackUri(info.uri) ? info.uri : '';
+        const albumUri = trackUri && info && isAlbumUri(info.albumUri) ? info.albumUri : '';
+        if (!trackUri) {
+            trackButton.hidden = true;
+            albumButton.hidden = true;
+            trackButton.removeAttribute('data-uri');
+            albumButton.removeAttribute('data-uri');
+            shown = { track: '', album: '' };
+            return;
+        }
+        trackButton.hidden = false;
+        trackButton.setAttribute('data-uri', trackUri);
+        bindHeart(trackButton);
+        if (albumUri) {
+            albumButton.hidden = false;
+            albumButton.setAttribute('data-uri', albumUri);
+            bindHeart(albumButton);
+        } else {
+            albumButton.hidden = true;
+            albumButton.removeAttribute('data-uri');
+        }
+        if (shown.track === trackUri && shown.album === albumUri) return;
+        if (shown.track !== trackUri) setHeartState(trackButton, false);
+        if (albumUri && shown.album !== albumUri) setHeartState(albumButton, false);
+        shown = { track: trackUri, album: albumUri };
+        refreshSaved(albumUri ? [trackUri, albumUri] : [trackUri]);
+    }
+
+    function sdkInfo() {
+        let track = null;
+        try {
+            track = currentTrack;
+        } catch (error) {
+            track = null;
+        }
+        if (!track) return null;
+        const episode = track.type === 'episode' || track.content_type === 'podcast';
+        const album = track.album || {};
+        return {
+            type: episode ? 'episode' : 'track',
+            uri: track.uri || '',
+            albumUri: album.uri || ''
+        };
+    }
+
+    function installHooks() {
+        if (typeof updateTrackDisplayFromAPI === 'function' && !updateTrackDisplayFromAPI.libraryHearts) {
+            const original = updateTrackDisplayFromAPI;
+            const wrapped = function (trackData) {
+                const result = original.apply(this, arguments);
+                if (!trackData) {
+                    showNowPlaying(null);
+                    return result;
+                }
+                let uri = trackData.uri || '';
+                if (!uri && trackData.id && /^[A-Za-z0-9]+$/.test(trackData.id)) {
+                    uri = 'spotify:track:' + trackData.id;
+                }
+                showNowPlaying({
+                    type: trackData.type,
+                    uri: uri,
+                    albumUri: trackData.album_uri || ''
+                });
+                return result;
+            };
+            wrapped.libraryHearts = true;
+            window.updateTrackDisplayFromAPI = wrapped;
+        }
+        if (typeof updateTrackDisplay === 'function' && !updateTrackDisplay.libraryHearts) {
+            const original = updateTrackDisplay;
+            const wrapped = function () {
+                const result = original.apply(this, arguments);
+                showNowPlaying(sdkInfo());
+                return result;
+            };
+            wrapped.libraryHearts = true;
+            window.updateTrackDisplay = wrapped;
+        }
+    }
+
+    function decorateTrackRow(row) {
+        if (row.querySelector('.library-heart')) return null;
+        const id = row.getAttribute('data-track-id') || '';
+        if (!/^[A-Za-z0-9]+$/.test(id)) return null;
+        const button = heartButton('spotify:track:' + id, 'track', true);
+        const slot = row.querySelector('.track-actions-col') || row.querySelector('.track-item') || row;
+        slot.insertBefore(button, slot.firstChild);
+        return button.getAttribute('data-uri');
+    }
+
+    function decorateSearchItem(item) {
+        if (item.querySelector('.library-heart')) return null;
+        const match = (item.getAttribute('onclick') || '').match(/playTrack\('([A-Za-z0-9]+)'\)/);
+        if (!match) return null;
+        const button = heartButton('spotify:track:' + match[1], 'track', true);
+        item.appendChild(button);
+        return button.getAttribute('data-uri');
+    }
+
+    function decorateAlbumActions() {
+        const actions = document.getElementById('playlistDetailActions');
+        if (!actions || actions.querySelector('.library-heart')) return null;
+        const play = actions.querySelector('button');
+        if (!play) return null;
+        const match = (play.getAttribute('onclick') || '').match(/playAlbum\('([A-Za-z0-9]+)'\)/);
+        if (!match) return null;
+        const button = heartButton('spotify:album:' + match[1], 'album', false);
+        actions.appendChild(button);
+        return button.getAttribute('data-uri');
+    }
+
+    function scanHearts() {
+        const uris = [];
+        document.querySelectorAll('.track-row-swipe[data-track-id]').forEach(function (row) {
+            const uri = decorateTrackRow(row);
+            if (uri) uris.push(uri);
+        });
+        document.querySelectorAll('.search-result-item').forEach(function (item) {
+            const uri = decorateSearchItem(item);
+            if (uri) uris.push(uri);
+        });
+        const albumUri = decorateAlbumActions();
+        if (albumUri) uris.push(albumUri);
+        if (uris.length) refreshSaved(uris);
+    }
+
+    let scanTimer = 0;
+    function scheduleScan() {
+        window.clearTimeout(scanTimer);
+        scanTimer = window.setTimeout(scanHearts, 40);
+    }
+
+    function renderLibraryHeartRows(tracks) {
+        const host = document.getElementById('libraryHeartRows');
+        const template = document.getElementById('libraryHeartRowTemplate');
+        if (!host || !template) return;
+        host.replaceChildren();
+        const rows = Array.isArray(tracks) ? tracks : [];
+        const needs = [];
+        rows.forEach(function (track) {
+            if (!track || !isTrackUri(track.uri)) return;
+            const node = template.content.firstElementChild.cloneNode(true);
+            node.querySelector('.track-name').textContent = track.name || 'Untitled';
+            const artists = Array.isArray(track.artists) ? track.artists.join(', ') : (track.artists || '');
+            node.querySelector('.track-artist').textContent = artists;
+            const button = node.querySelector('.library-heart');
+            button.setAttribute('data-uri', track.uri);
+            button.setAttribute('data-kind', 'track');
+            bindHeart(button);
+            if (typeof track.saved === 'boolean') setHeartState(button, track.saved);
+            else needs.push(track.uri);
+            host.appendChild(node);
+        });
+        host.hidden = host.children.length === 0;
+        if (needs.length) refreshSaved(needs);
+    }
+
+    window.libraryHearts = {
+        renderRows: renderLibraryHeartRows,
+        refresh: refreshSaved
+    };
+
+    function watch(id) {
+        const node = document.getElementById(id);
+        if (!node || !window.MutationObserver) return;
+        const observer = new MutationObserver(scheduleScan);
+        observer.observe(node, { childList: true, subtree: true });
+    }
+
+    function init() {
+        bindHeart(document.getElementById('libraryHeartTrack'));
+        bindHeart(document.getElementById('libraryHeartAlbum'));
+        installHooks();
+        const trackInfo = document.getElementById('trackInfo');
+        if (trackInfo && window.MutationObserver) {
+            const infoObserver = new MutationObserver(function () {
+                const name = trackInfo.querySelector('.track-name');
+                if (name && name.textContent.indexOf('No track playing') === 0) showNowPlaying(null);
+            });
+            infoObserver.observe(trackInfo, { childList: true, subtree: true, characterData: true });
+        }
+        ['searchResults', 'songsList', 'tracksList', 'discoverContent', 'playlistDetailActions'].forEach(watch);
+        scheduleScan();
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+})();
+</script>

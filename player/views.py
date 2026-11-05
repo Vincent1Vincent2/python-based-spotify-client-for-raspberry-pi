@@ -121,6 +121,8 @@ def login_view(request):
     flag, an active session still goes straight to the player, and the
     page can offer accounts already linked on this device.
     """
+    # auth=1 is the reconnect path (a missing library scope, or a new
+    # account). It has to start OAuth even when a session already exists.
     if request.GET.get('auth') == '1':
         api = SpotifyAPI()
         auth_url = api.get_authorization_url(SPOTIFY_SCOPE)
@@ -446,6 +448,7 @@ def current_playback(request):
                     'name': item.get('name', 'Unknown Track'),
                     'artists': [artist.get('name', 'Unknown Artist') for artist in artists],
                     'album': album.get('name', 'Unknown Album'),
+                    'album_uri': album.get('uri'),
                     'image': album_images[0]['url'] if album_images and len(album_images) > 0 else None,
                     'duration_ms': item.get('duration_ms', 0),
                     'progress_ms': progress_ms,
