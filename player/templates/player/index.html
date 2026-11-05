@@ -15,6 +15,7 @@
     <script src="{% static 'player/js/scope-banner.js' %}"></script>
     <link rel="stylesheet" href="{% static 'player/css/playlist-cards.css' %}">
     <link rel="stylesheet" href="{% static 'player/css/connect.css' %}">
+    <link rel="stylesheet" href="{% static 'player/css/stage.css' %}">
     <style>
         /* Scrub bar - scoped here rather than player.css so this
            feature stays self-contained; can be moved into player.css
@@ -189,6 +190,8 @@
             <div style="text-align: center; margin-bottom: 15px;">
                 <button class="btn" onclick="checkCurrentPlayback()"
                     style="font-size: 0.9rem; padding: 8px 15px;">Refresh Playback Info</button>
+                <button type="button" class="btn" id="stageToggle" aria-pressed="false"
+                    aria-controls="nowPlayingStage">Stage</button>
             </div>
 
             <div class="controls" style="flex-wrap: wrap;">
@@ -3030,6 +3033,20 @@
         });
     </script>
     <script src="{% static 'player/js/shortcuts.js' %}"></script>
+
+    <div id="nowPlayingStage" class="now-playing-stage" hidden aria-hidden="true" role="dialog"
+        aria-modal="true" aria-labelledby="stageTitle">
+        <button type="button" class="stage-close" id="stageClose">Close</button>
+        <div class="stage-panel">
+            <img id="stageArt" class="stage-art" alt="" hidden>
+            <div class="stage-title" id="stageTitle">No track playing</div>
+            <div class="stage-artists" id="stageArtists"></div>
+            <div class="stage-album" id="stageAlbum"></div>
+            <div class="stage-device" id="stageDevice"></div>
+            <div class="stage-status" id="stageStatus"></div>
+        </div>
+    </div>
+    <script src="{% static 'player/js/stage.js' %}"></script>
 </body>
 
 </html>

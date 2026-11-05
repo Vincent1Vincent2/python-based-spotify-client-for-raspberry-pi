@@ -1,0 +1,115 @@
+@import "variables.css";
+
+/* Full-screen now playing stage. Flat colors and borders from variables.css. */
+
+.now-playing-stage[hidden] {
+    display: none;
+}
+
+.now-playing-stage {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: calc(var(--spacing-xl) + 48px) var(--spacing-lg) var(--spacing-xl);
+    background: var(--color-bg);
+    color: var(--color-text);
+}
+
+#stageToggle {
+    margin-left: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: 0.9rem;
+}
+
+.stage-panel {
+    width: 100%;
+    max-width: 920px;
+    text-align: center;
+}
+
+.stage-art[hidden] {
+    display: none;
+}
+
+.stage-art {
+    display: block;
+    width: min(70vw, 52vh);
+    height: min(70vw, 52vh);
+    max-width: 560px;
+    max-height: 560px;
+    margin: 0 auto var(--spacing-lg);
+    object-fit: cover;
+    background: var(--color-gray-light);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius);
+}
+
+.stage-title {
+    font-size: 2.5rem;
+    font-weight: 600;
+    line-height: 1.15;
+    margin-bottom: var(--spacing-sm);
+}
+
+.stage-artists {
+    font-size: 1.5rem;
+    margin-bottom: var(--spacing-xs);
+}
+
+.stage-album {
+    font-size: 1.15rem;
+    margin-bottom: var(--spacing-lg);
+}
+
+.stage-artists:empty,
+.stage-album:empty,
+.stage-device:empty,
+.stage-status:empty {
+    display: none;
+}
+
+.stage-device {
+    display: inline-block;
+    font-size: 1.05rem;
+    font-weight: 600;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background: var(--color-gray-light);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius);
+}
+
+.stage-status {
+    margin-top: var(--spacing-md);
+    font-size: 0.95rem;
+    color: var(--color-gray);
+}
+
+.stage-close {
+    position: absolute;
+    top: var(--spacing-lg);
+    right: var(--spacing-lg);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background: var(--color-bg);
+    color: var(--color-text);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.stage-close:hover {
+    background: var(--color-text);
+    color: var(--color-bg);
+}
+
+body.stage-open {
+    overflow: hidden;
+}
