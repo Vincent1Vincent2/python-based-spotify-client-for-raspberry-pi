@@ -305,6 +305,7 @@
                     <button class="tab-button" onclick="switchTab('queue')" id="tab-queue">Queue</button>
                     <button class="tab-button" onclick="switchTab('stats')" id="tab-stats">Stats</button>
                     {% include "player/features/podcast_shelf/shows_tab.html" %}
+                    <button class="tab-button" onclick="switchTab('rotation')" id="tab-rotation">Rotation</button>
                 </div>
 
                 <div class="tab-content active" id="content-playlists">
@@ -488,6 +489,28 @@
                     </div>
                 </div>
             </div>
+                <div class="tab-content" id="content-rotation">
+                    <div class="rotation-section" id="rotationSection">
+                        <div class="section-header">
+                            <h3>Heavy rotation</h3>
+                        </div>
+                        <p class="rotation-note">
+                            Ten tracks, or ten artists. Each button is one Spotify read.
+                            The range reloads only the list on screen.
+                        </p>
+                        <div class="rotation-ranges" role="group" aria-label="Time range">
+                            <button type="button" class="rotation-range" data-range="short_term" aria-pressed="false" onclick="setRotationRange('short_term')">Last 4 weeks</button>
+                            <button type="button" class="rotation-range is-on" data-range="medium_term" aria-pressed="true" onclick="setRotationRange('medium_term')">Last 6 months</button>
+                            <button type="button" class="rotation-range" data-range="long_term" aria-pressed="false" onclick="setRotationRange('long_term')">All time</button>
+                        </div>
+                        <div class="rotation-actions">
+                            <button type="button" class="btn rotation-kind" data-kind="tracks" aria-pressed="false" onclick="loadRotation('tracks')">Top tracks</button>
+                            <button type="button" class="btn rotation-kind" data-kind="artists" aria-pressed="false" onclick="loadRotation('artists')">Top artists</button>
+                        </div>
+                        <div id="rotationStatus" class="rotation-status"></div>
+                        <div id="rotationList" class="rotation-list"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="playlist-detail-view" id="playlistDetailView">
@@ -2845,6 +2868,42 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             })
+
+        let rotationKind = '';
+        let rotationRange = 'medium_term';
+        let rotationTicket = 0;
+
+        function setRotationRange(range) {
+            if (range !== 'short_term' && range !== 'medium_term' && range !== 'long_term') {
+                return;
+            }
+            rotationRange = range;
+            document.querySelectorAll('.rotation-range').forEach(function (btn) {
+                const on = btn.getAttribute('data-range') === range;
+                btn.classList.toggle('is-on', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+            if (rotationKind) loadRotation(rotationKind);
+        }
+
+        function loadRotation(kind) {
+            if (kind !== 'tracks' && kind !== 'artists') {
+                return;
+            }
+            rotationKind = kind;
+            document.querySelectorAll('.rotation-kind').forEach(function (btn) {
+                const on = btn.getAttribute('data-kind') === kind;
+                btn.classList.toggle('is-on', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+            const ticket = ++rotationTicket;
+            const range = rotationRange;
+            const status = document.getElementById('rotationStatus');
+            const list = document.getElementById('rotationList');
+            if (status) {
+                status.textContent = kind === 'tracks' ? 'Reading top tracks...' : 'Reading top artists...';
+            }
+            fetch('/rotation/' + kind + '/?time_range=' + encodeURIComponent(range))
                 .then(function (response) {
                     return response.json().then(function (data) {
                         return { ok: response.ok, data: data };
@@ -2862,6 +2921,84 @@
                     finishMixRequest();
                     status.textContent = 'Smart mix did not start.';
                 });
+        }
+
+                    if (ticket !== rotationTicket) {
+                        return;
+                    }
+                    if (!result.ok || !result.data || result.data.error) {
+                        showRotationError(result.data);
+                        if (list) list.innerHTML = '';
+                        return;
+                    }
+                    showRotation(result.data);
+                })
+                .catch(function () {
+                    if (ticket !== rotationTicket) {
+                        return;
+                    }
+                    if (status) status.textContent = 'Heavy rotation did not load.';
+                });
+        }
+
+        function showRotationError(data) {
+            const status = document.getElementById('rotationStatus');
+            if (!status) return;
+            const message = escapeHtml((data && data.error) || 'Heavy rotation did not load.');
+            if (data && data.code === 'needs_scope') {
+                const link = escapeHtml((data && data.link) || '/login/?auth=1');
+                status.innerHTML = message + ' <a href="' + link + '">Reconnect Spotify</a>';
+                return;
+            }
+            status.innerHTML = message;
+        }
+
+        function showRotation(data) {
+            const status = document.getElementById('rotationStatus');
+            const list = document.getElementById('rotationList');
+            if (!status || !list) return;
+            const labels = {
+                short_term: 'Last 4 weeks',
+                medium_term: 'Last 6 months',
+                long_term: 'All time',
+            };
+            const noun = data.kind === 'artists' ? 'artists' : 'tracks';
+            const items = data.items || [];
+            status.textContent = (labels[data.time_range] || 'Last 6 months') + ' · ' + items.length + ' ' + noun;
+            if (!items.length) {
+                list.innerHTML = '<div class="rotation-empty">Nothing in this range yet.</div>';
+                return;
+            }
+            list.innerHTML = items.map(function (item, index) {
+                return rotationRow(item, data.kind, index);
+            }).join('');
+        }
+
+        function rotationRow(item, kind, index) {
+            const name = escapeHtml(item.name || 'Untitled');
+            const image = escapeHtml(item.image || 'https://via.placeholder.com/50?text=No+Image');
+            const rank = '<div class="rotation-rank">' + (index + 1) + '</div>';
+            const art = '<img src="' + image + '" alt="" class="track-image">';
+            if (kind === 'artists') {
+                const genres = escapeHtml((item.genres || []).join(', '));
+                return '<div class="track-item rotation-artist">' + rank + art +
+                    '<div class="track-info"><div class="track-name">' + name + '</div>' +
+                    '<div class="track-artist">' + (genres || 'Artist') + '</div></div></div>';
+            }
+            const artists = escapeHtml((item.artists || []).join(', '));
+            const album = escapeHtml(item.album || '');
+            const detail = artists + (album ? ' · ' + album : '');
+            const id = escapeHtml(item.id || '');
+            return '<button type="button" class="track-item rotation-track" data-track-id="' + id + '" onclick="playRotationTrack(this)">' +
+                rank + art +
+                '<div class="track-info"><div class="track-name">' + name + '</div>' +
+                '<div class="track-artist">' + detail + '</div></div></button>';
+        }
+
+        function playRotationTrack(row) {
+            const id = row.getAttribute('data-track-id');
+            if (!id || typeof playTrack !== 'function') return;
+            playTrack(id);
         }
 
         function loadDiscover(reset = false) {
